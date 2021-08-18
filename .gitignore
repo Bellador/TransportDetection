@@ -1,0 +1,11 @@
+geneva_shapefile_folder
+inference
+MOT16_eval
+video_storage
+output
+osm_database
+input_videos
+from_cluster
+__pycache__
+.idea
+db_psw.txt
