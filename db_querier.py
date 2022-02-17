@@ -1,8 +1,8 @@
-import psycopg2
-from psycopg2 import sql
-import datetime
 import os
 import sys
+import psycopg2
+from psycopg2 import sql
+
 
 class DbQuerier:
     path_db_psw = "db_psw.txt"

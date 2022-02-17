@@ -4,6 +4,7 @@ import sys
 sys.path.insert(0, './yolov5')
 # general utils
 import os
+import csv
 # fixes error: OMP: Error #15: Initializing libiomp5md.dll, but found libiomp5md.dll already initialized.
 # https://stackoverflow.com/questions/20554074/sklearn-omp-error-15-when-fitting-models
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
@@ -12,7 +13,6 @@ import shutil
 import argparse
 import platform
 from pathlib import Path
-import numpy as np
 # Deep nets
 import cv2
 import torch
@@ -26,6 +26,8 @@ from deep_sort_pytorch.deep_sort import DeepSort
 from deep_sort_pytorch.utils.parser import get_config
 # Object Character Recognition (OCR)
 import easyocr
+
+csv.field_size_limit(sys.maxsize)
 
 palette = (2 ** 11 - 1, 2 ** 15 - 1, 2 ** 20 - 1)
 
@@ -53,14 +55,12 @@ def xyxy_to_tlwh(bbox_xyxy):
         tlwh_bboxs.append(tlwh_obj)
     return tlwh_bboxs
 
-
 def compute_color_for_labels(label):
     """
     Simple function that adds fixed color depending on the class
     """
     color = [int((p * (label ** 2 - label + 1)) % 255) for p in palette]
     return tuple(color)
-
 
 def draw_boxes(img, bbox, identities=None, offset=(0, 0)):
     for i, box in enumerate(bbox):
@@ -81,11 +81,10 @@ def draw_boxes(img, bbox, identities=None, offset=(0, 0)):
                                  t_size[1] + 4), cv2.FONT_HERSHEY_PLAIN, 2, [255, 255, 255], 2)
     return img
 
-
 def detect(opt):
-    out, source, yolo_weights, deep_sort_weights, show_vid, save_vid, save_txt, imgsz, evaluate = \
+    out, source, yolo_weights, deep_sort_weights, show_vid, save_vid, save_txt, imgsz, evaluate, TRACKLOG_PATH, OCR_LOG_PATH = \
         opt.output, opt.source, opt.yolo_weights, opt.deep_sort_weights, opt.show_vid, opt.save_vid, \
-            opt.save_txt, opt.img_size, opt.evaluate
+            opt.save_txt, opt.img_size, opt.evaluate, opt.track_log, opt.ocr_log
     webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
 
     # initialize deepsort
@@ -97,21 +96,15 @@ def detect(opt):
                         nms_max_overlap=cfg.DEEPSORT.NMS_MAX_OVERLAP, max_iou_distance=cfg.DEEPSORT.MAX_IOU_DISTANCE,
                         max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
                         use_cuda=True)
-
     # Initialize
     device = select_device(opt.device)
-
     # The MOT16 evaluation runs multiple inference streams in parallel, each one writing to
     # its own .txt file. Hence, in that case, the output folder is not restored
     if not evaluate:
         if os.path.exists(out):
-            # NEW: copy existing output to persistent ./output folder
-            for file in os.listdir(out):
-                shutil.move(os.path.join(out, file), os.path.join('./output/', file))
             shutil.rmtree(out)  # delete output folder
         os.makedirs(out)  # make new output folder
     half = device.type != 'cpu'  # half precision only supported on CUDA
-
     # Load model
     model = attempt_load(yolo_weights, map_location=device)  # load FP32 model
     stride = int(model.stride.max())  # model stride
@@ -119,47 +112,22 @@ def detect(opt):
     names = model.module.names if hasattr(model, 'module') else model.names  # get class names and colors
     if half:
         model.half()  # to FP16
-
     # Set Dataloader
     vid_path, vid_writer = None, None
     # Check if environment supports image displays
     if show_vid:
         show_vid = check_imshow()
-
     if webcam:
         cudnn.benchmark = True  # set True to speed up constant image size inference
         dataset = LoadStreams(source, img_size=imgsz, stride=stride)
     else:
         dataset = LoadImages(source, img_size=imgsz)
-
     # Run inference
     if device.type != 'cpu':
         model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
     t0 = time.time()
-
     # NEW initialise easyocr + logging
-    ocr_reader = easyocr.Reader(['fr', 'en', 'de'])  # need to run only once to load model into memory
-    # tracklog setup
-    save_path = str(Path(out))
-    if source != 0:
-        source_str = source.split('\\')[-1][:-4] # ON CLUSTER: CHANGE TO split('/')
-    tracklog_filename = f'{time.strftime("%Y%m%d-%H%M%S")}_source_{source_str}_tracklog.csv'
-    ocr_log_filename = f'{time.strftime("%Y%m%d-%H%M%S")}_source_{source_str}_ocrlog.csv'
-    # NEW create new CSV log_file with input video name and ocrlog.csv ending
-    TRACKLOG_PATH = os.path.join(save_path, tracklog_filename)
-    OCR_LOG_PATH = os.path.join(save_path, ocr_log_filename)
-    # NEW write filenames to temp. file in ./inference/tmp_output to pass them to the following scripts
-    tmp_log_filenames_path = r'./inference/tmp_output/tmp_log_filenames.txt'
-    with open(tmp_log_filenames_path, 'wt', encoding='utf-8') as f:
-        f.write(f'{TRACKLOG_PATH}\n')
-        f.write(f'{OCR_LOG_PATH}\n')
-    # write header of log fileS
-    if True:  # save_txt
-        with open(TRACKLOG_PATH, 'wt', encoding='utf-8') as f:
-            f.write('frame_idx;identity;class_name;bbox_top;bbox_left;bbox_w;bbox_h\n')
-
-        with open(OCR_LOG_PATH, 'wt', encoding='utf-8') as f:
-            f.write('frame_num;text;certainty;bbox_xmin;bbox_ymin;bbox_xmax;bbox_ymax\n')
+    ocr_reader = easyocr.Reader(['fr', 'en', 'de'], gpu=True)  # need to run only once to load model into memory
 
     for frame_idx, (path, img, im0s, vid_cap) in enumerate(dataset):
         img = torch.from_numpy(img).to(device)
@@ -178,7 +146,6 @@ def detect(opt):
         # --- img_for_ocr = np.array(im0s) -- not necessary
         img_for_ocr = im0s
         ocr_result = ocr_reader.readtext(img_for_ocr, detail=1)
-        # ocr_result = []
         if len(ocr_result) != 0:
             with open(OCR_LOG_PATH, 'a', encoding='utf-8') as f:
                 for result in ocr_result:
@@ -194,11 +161,9 @@ def detect(opt):
                     # here potentially set certainty threshold!!
                     ocr_entry = '{};{};{};{};{};{};{}\n'.format(frame_idx, text, certainty, bbox_xmin, bbox_ymin, bbox_xmax, bbox_ymax)
                     f.write(ocr_entry)
-
         # Apply NMS
         pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
         t2 = time_synchronized()
-
         # Process detections
         for i, det in enumerate(pred):  # detections per image
             if webcam:  # batch_size >= 1
@@ -213,12 +178,10 @@ def detect(opt):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(
                     img.shape[2:], det[:, :4], im0.shape).round()
-
                 # Print results
                 for c in det[:, -1].unique():
                     n = (det[:, -1] == c).sum()  # detections per class
                     s += '%g %ss, ' % (n, names[int(c)])  # add to string
-
                 # just again for getting all class_names (without removing dublicates)
                 class_names = []
                 for c in det[:, -1]:
@@ -226,7 +189,6 @@ def detect(opt):
 
                 xywh_bboxs = []
                 confs = []
-
                 # Adapt detections to deep sort input format
                 for *xyxy, conf, cls in det:
                     # to deep sort format
@@ -237,10 +199,8 @@ def detect(opt):
 
                 xywhs = torch.Tensor(xywh_bboxs)
                 confss = torch.Tensor(confs)
-
                 # pass detections to deepsort
                 outputs = deepsort.update(xywhs, confss, im0, class_names)
-
                 # draw boxes for visualization
                 if len(outputs) > 0:
                     bbox_xyxy = outputs[:, :4]
@@ -249,7 +209,6 @@ def detect(opt):
                     draw_boxes(im0, bbox_xyxy, identities)
                     # to MOT format
                     tlwh_bboxs = xyxy_to_tlwh(bbox_xyxy)
-
                     # Write MOT compliant results to file
                     if True: #save_txt
                         for j, (tlwh_bbox, output) in enumerate(zip(tlwh_bboxs, outputs)):
@@ -263,16 +222,13 @@ def detect(opt):
                                 f.write(f'{frame_idx};{identity};{class_name};{bbox_top};{bbox_left};{bbox_w};{bbox_h}\n')
             else:
                 deepsort.increment_ages()
-
             # Print time (inference + NMS)
             print('%sDone. (%.3fs)' % (s, t2 - t1))
-
             # Stream results
             if show_vid:
                 cv2.imshow(p, im0)
                 if cv2.waitKey(1) == ord('q'):  # q to quit
                     raise StopIteration
-
             # Save results (image with detections)
             if save_vid:
                 if vid_path != save_path:  # new video
@@ -295,7 +251,11 @@ def detect(opt):
         if platform == 'darwin':  # MacOS
             os.system('open ' + save_path)
 
-    print('Done. (%.3fs)' % (time.time() - t0))
+    # # NEW: copy existing output to persistent ./output folder
+    # for file in os.listdir(out):
+    #     shutil.move(os.path.join(out, file), os.path.join('./output/', file))
+
+    print('[*] Done. (%.3fs)' % (time.time() - t0))
 
 
 if __name__ == '__main__':
@@ -323,6 +283,8 @@ if __name__ == '__main__':
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--evaluate', action='store_true', help='augmented inference')
     parser.add_argument("--config_deepsort", type=str, default="deep_sort_pytorch/configs/deep_sort.yaml")
+    parser.add_argument("--track-log", type=str)
+    parser.add_argument("--ocr-log", type=str)
     args = parser.parse_args()
     args.img_size = check_img_size(args.img_size)
 
