@@ -1,0 +1,14 @@
+.idea
+__pycache__
+attention_ocr_fsns
+from_cluster
+geneva_shapefile_folder
+input_videos
+inference
+MOT16_eval
+video_storage
+to_manually_annotate
+osm_database
+output
+db_psw.txt
+*.mp4
