@@ -1,0 +1,794 @@
+{
+"model_spec":{
+ "name": "fsns_attention_model",
+ "signature_name": "",
+ "version": "1"
+}
+,
+"metadata": {"signature_def": {
+ "signature_def": {
+  "serving_default": {
+   "inputs": {
+    "inputs": {
+     "dtype": "DT_STRING",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "tf_example:0"
+    }
+   },
+   "outputs": {
+    "attention_mask_17": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_17/Softmax:0"
+    },
+    "attention_mask_22": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_22/Softmax:0"
+    },
+    "attention_mask_18": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_18/Softmax:0"
+    },
+    "attention_mask_23": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_23/Softmax:0"
+    },
+    "attention_mask_24": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_24/Softmax:0"
+    },
+    "attention_mask_19": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_19/Softmax:0"
+    },
+    "attention_mask_30": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_30/Softmax:0"
+    },
+    "attention_mask_25": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_25/Softmax:0"
+    },
+    "scores": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "-1",
+        "name": ""
+       },
+       {
+        "size": "37",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/predicted_scores:0"
+    },
+    "chars_logit": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "37",
+        "name": ""
+       },
+       {
+        "size": "134",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/concat:0"
+    },
+    "attention_mask_31": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_31/Softmax:0"
+    },
+    "attention_mask_26": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_26/Softmax:0"
+    },
+    "attention_mask_27": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_27/Softmax:0"
+    },
+    "attention_mask_32": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_32/Softmax:0"
+    },
+    "attention_mask_28": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_28/Softmax:0"
+    },
+    "attention_mask_33": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_33/Softmax:0"
+    },
+    "attention_mask_34": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_34/Softmax:0"
+    },
+    "attention_mask_29": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_29/Softmax:0"
+    },
+    "predicted_text": {
+     "dtype": "DT_STRING",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/predicted_text:0"
+    },
+    "attention_mask_35": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_35/Softmax:0"
+    },
+    "attention_mask_36": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_36/Softmax:0"
+    },
+    "normalized_seq_conf": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/normalized_seq_conf:0"
+    },
+    "predictions": {
+     "dtype": "DT_INT32",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "37",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/predicted_chars:0"
+    },
+    "images_float": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "150",
+        "name": ""
+       },
+       {
+        "size": "600",
+        "name": ""
+       },
+       {
+        "size": "3",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "float_images:0"
+    },
+    "predicted_length": {
+     "dtype": "DT_INT32",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/predicted_length:0"
+    },
+    "attention_mask_0": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0/Softmax:0"
+    },
+    "predicted_conf": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/predicted_conf:0"
+    },
+    "attention_mask_1": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_1/Softmax:0"
+    },
+    "attention_mask_2": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_2/Softmax:0"
+    },
+    "attention_mask_3": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_3/Softmax:0"
+    },
+    "attention_mask_4": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_4/Softmax:0"
+    },
+    "attention_mask_10": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_10/Softmax:0"
+    },
+    "attention_mask_5": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_5/Softmax:0"
+    },
+    "attention_mask_11": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_11/Softmax:0"
+    },
+    "attention_mask_6": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_6/Softmax:0"
+    },
+    "attention_mask_12": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_12/Softmax:0"
+    },
+    "attention_mask_7": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_7/Softmax:0"
+    },
+    "attention_mask_13": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_13/Softmax:0"
+    },
+    "attention_mask_8": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_8/Softmax:0"
+    },
+    "attention_mask_9": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_9/Softmax:0"
+    },
+    "attention_mask_14": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_14/Softmax:0"
+    },
+    "attention_mask_20": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_20/Softmax:0"
+    },
+    "attention_mask_15": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_15/Softmax:0"
+    },
+    "attention_mask_16": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_16/Softmax:0"
+    },
+    "attention_mask_21": {
+     "dtype": "DT_FLOAT",
+     "tensor_shape": {
+      "dim": [
+       {
+        "size": "32",
+        "name": ""
+       },
+       {
+        "size": "1024",
+        "name": ""
+       }
+      ],
+      "unknown_rank": false
+     },
+     "name": "AttentionOcr_v1/sequence_logit_fn/SQLR/LSTM/attention_decoder/Attention_0_21/Softmax:0"
+    }
+   },
+   "method_name": "tensorflow/serving/classify"
+  }
+ }
+}
+}
+}
