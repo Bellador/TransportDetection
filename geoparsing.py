@@ -143,7 +143,7 @@ def trans_to_linestring(str_line):
     return line_string
 
 
-def geoparsing(frame_dict, PATH, source_str='None provided'):
+def geoparsing(frame_dict, PATH_, OUTPUT_PATH):
     '''
     calculate Levenshtein Distance (word similarity) [https://towardsdatascience.com/calculating-string-similarity-in-python-276e18a7d33a]
     between the OCR detected words above a certain threshold and a gazetteer.
@@ -195,10 +195,9 @@ def geoparsing(frame_dict, PATH, source_str='None provided'):
         df.drop_duplicates(inplace=True)
         df_len_without_duplicates = df.shape[0]
         # save geolocations to output file
-        GEOLOCATIONS_OUTPUT_PATH = './output/'
         # define source string
-        GEOLOCATIONS_FILENAME = f'{time.strftime("%Y%m%d_%H%M%S")}_source_{source_str}_geolocations.csv'
-        with open(os.path.join(GEOLOCATIONS_OUTPUT_PATH, GEOLOCATIONS_FILENAME), 'wt', encoding='utf-8') as f:
+        GEOLOCATIONS_FILENAME = f'{time.strftime("%Y%m%d_%H%M%S")}_geolocations.csv'
+        with open(os.path.join(OUTPUT_PATH, GEOLOCATIONS_FILENAME), 'wt', encoding='utf-8') as f:
             # header
             f.write('name;geo\n')
             for i_index, line in df.iterrows():
@@ -218,7 +217,7 @@ def geoparsing(frame_dict, PATH, source_str='None provided'):
         # add basemap
         ctx.add_basemap(ax, url=ctx.providers.OpenStreetMap.Mapnik)
         # save figure
-        log_path = PATH.split('/')[-1][:-4]
+        log_path = PATH_.split('/')[-1][:-4]
         fig_filename = f"./output/{time.strftime('%Y%m%d_%H%M%S')}_{log_path}_map.png"
         plt.savefig(fig_filename)
         plt.show()

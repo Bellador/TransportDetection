@@ -82,9 +82,9 @@ def draw_boxes(img, bbox, identities=None, offset=(0, 0)):
     return img
 
 def detect(opt):
-    out, source, yolo_weights, deep_sort_weights, show_vid, save_vid, save_txt, imgsz, evaluate, TRACKLOG_PATH, OCR_LOG_PATH = \
+    out, source, yolo_weights, deep_sort_weights, show_vid, save_vid, save_txt, imgsz, evaluate, OCR_SKIP_NTH_FRAME, OUTPUT_VIDEO_PATH, TRACKLOG_PATH, OCR_LOG_PATH = \
         opt.output, opt.source, opt.yolo_weights, opt.deep_sort_weights, opt.show_vid, opt.save_vid, \
-            opt.save_txt, opt.img_size, opt.evaluate, opt.track_log, opt.ocr_log
+            opt.save_txt, opt.img_size, opt.evaluate, opt.ocr_skip_nth_frame, opt.output_video_path, opt.track_log, opt.ocr_log
     webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
 
     # initialize deepsort
@@ -145,23 +145,25 @@ def detect(opt):
         # does not work for WEBCAM!
         # --- img_for_ocr = np.array(im0s) -- not necessary
         img_for_ocr = im0s
-        ocr_result = ocr_reader.readtext(img_for_ocr, detail=1)
-        if len(ocr_result) != 0:
-            with open(OCR_LOG_PATH, 'a', encoding='utf-8') as f:
-                for result in ocr_result:
-                    bbox = result[0]
-                    bbox_bl = bbox[0]
-                    bbox_tr = bbox[2]
-                    bbox_xmin = bbox_bl[0]
-                    bbox_ymin = bbox_bl[1]
-                    bbox_xmax = bbox_tr[0]
-                    bbox_ymax = bbox_tr[1]
-                    text = result[1]
-                    certainty = result[2]
-                    # here potentially set certainty threshold!!
-                    ocr_entry = '{};{};{};{};{};{};{}\n'.format(frame_idx, text, certainty, bbox_xmin, bbox_ymin, bbox_xmax, bbox_ymax)
-                    f.write(ocr_entry)
-        # Apply NMS
+        # check if OCR shall be performed on the current frame
+        if int(frame_idx) % int(OCR_SKIP_NTH_FRAME) == 0:
+            ocr_result = ocr_reader.readtext(img_for_ocr, detail=1)
+            if len(ocr_result) != 0:
+                with open(OCR_LOG_PATH, 'a', encoding='utf-8') as f:
+                    for result in ocr_result:
+                        bbox = result[0]
+                        bbox_bl = bbox[0]
+                        bbox_tr = bbox[2]
+                        bbox_xmin = bbox_bl[0]
+                        bbox_ymin = bbox_bl[1]
+                        bbox_xmax = bbox_tr[0]
+                        bbox_ymax = bbox_tr[1]
+                        text = result[1]
+                        certainty = result[2]
+                        # here potentially set certainty threshold!!
+                        ocr_entry = '{};{};{};{};{};{};{}\n'.format(frame_idx, text, certainty, bbox_xmin, bbox_ymin, bbox_xmax, bbox_ymax)
+                        f.write(ocr_entry)
+        # apply NMS
         pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
         t2 = time_synchronized()
         # Process detections
@@ -189,7 +191,7 @@ def detect(opt):
 
                 xywh_bboxs = []
                 confs = []
-                # Adapt detections to deep sort input format
+                # adapt detections to deep sort input format
                 for *xyxy, conf, cls in det:
                     # to deep sort format
                     x_c, y_c, bbox_w, bbox_h = xyxy_to_xywh(*xyxy)
@@ -222,29 +224,29 @@ def detect(opt):
                                 f.write(f'{frame_idx};{identity};{class_name};{bbox_top};{bbox_left};{bbox_w};{bbox_h}\n')
             else:
                 deepsort.increment_ages()
-            # Print time (inference + NMS)
+            # print time (inference + NMS)
             print('%sDone. (%.3fs)' % (s, t2 - t1))
-            # Stream results
+            # stream results
             if show_vid:
                 cv2.imshow(p, im0)
                 if cv2.waitKey(1) == ord('q'):  # q to quit
                     raise StopIteration
-            # Save results (image with detections)
+            # save results (video with detections)
             if save_vid:
-                if vid_path != save_path:  # new video
-                    vid_path = save_path
-                    if isinstance(vid_writer, cv2.VideoWriter):
-                        vid_writer.release()  # release previous video writer
-                    if vid_cap:  # video
-                        fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                        w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                        h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                    else:  # stream
-                        fps, w, h = 30, im0.shape[1], im0.shape[0]
-                        save_path += '.mp4'
+                # if vid_path != save_path:  # new video
+                #     vid_path = save_path
+                if isinstance(vid_writer, cv2.VideoWriter):
+                    vid_writer.release()  # release previous video writer
+                if vid_cap:  # video
+                    fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                    w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                else:  # stream
+                    fps, w, h = 30, im0.shape[1], im0.shape[0]
+                    save_path += '.mp4'
 
-                    vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-                vid_writer.write(im0)
+                vid_writer = cv2.VideoWriter(OUTPUT_VIDEO_PATH, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+            vid_writer.write(im0)
 
     if save_txt or save_vid:
         print('Results saved to %s' % os.getcwd() + os.sep + out)
@@ -283,6 +285,8 @@ if __name__ == '__main__':
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--evaluate', action='store_true', help='augmented inference')
     parser.add_argument("--config_deepsort", type=str, default="deep_sort_pytorch/configs/deep_sort.yaml")
+    parser.add_argument("--ocr-skip-nth-frame", type=str)
+    parser.add_argument("--output-video-path", type=str)
     parser.add_argument("--track-log", type=str)
     parser.add_argument("--ocr-log", type=str)
     args = parser.parse_args()

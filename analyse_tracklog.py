@@ -16,7 +16,7 @@ TO DO:
 - plot the temporal occurence of objects classes across frames
 '''
 
-def total_transportation_modes(LOG_PATH, source_str=None):
+def total_transportation_modes(LOG_PATH, OUTPUT_PATH):
     '''
     - detect transportation modes through the position of the detected objects in relation to one another
         (e.g. person + bicycle = cyclist)
@@ -303,10 +303,9 @@ def total_transportation_modes(LOG_PATH, source_str=None):
         # define amount of pedestrians according to the still not assigned and detected people
         total_detected_transportation_modes_dict["pedestrians"] = len(set(total_detected_transportation_modes_dict['not_assigned_persons']))
         # write to output file
-        TRANS_MODES_OUTPUT_PATH = './output/'
-        TRANS_MODES_FILENAME = f'{time.strftime("%Y%m%d-%H%M%S")}_source_{source_str}_transportation_modes.csv'
+        TRANS_MODES_FILENAME = f'{time.strftime("%Y%m%d-%H%M%S")}_transportation_modes.csv'
         print_string = ""
-        with open(os.path.join(TRANS_MODES_OUTPUT_PATH, TRANS_MODES_FILENAME), 'wt', encoding='utf-8') as f:
+        with open(os.path.join(OUTPUT_PATH, TRANS_MODES_FILENAME), 'wt', encoding='utf-8') as f:
             # header
             f.write('transportation_mode;count\n')
             # write detected transportation modes
@@ -320,7 +319,7 @@ def total_transportation_modes(LOG_PATH, source_str=None):
         print(print_string)
 
 
-def total_objects_per_class(LOG_PATH, classnames_to_consider, source_str=None):
+def total_objects_per_class(LOG_PATH, OUTPUT_PATH, classnames_to_consider):
     # instantiate default dict that stores detected object information
     d = defaultdict(lambda: dict({'count': 0, 'frames': [], 'coco_id': None}))
     # coco_class_names
@@ -354,9 +353,8 @@ def total_objects_per_class(LOG_PATH, classnames_to_consider, source_str=None):
                 d[class_name]['frames'].append(frame_id)
                 assigned_ids.append(identity)
 
-        OBJECT_CLASS_OUTPUT_PATH = './output/'
-        OBJECT_CLASS_FILENAME = f'{time.strftime("%Y%m%d-%H%M%S")}_source_{source_str}_class_names.csv'
-        with open(os.path.join(OBJECT_CLASS_OUTPUT_PATH, OBJECT_CLASS_FILENAME), 'wt', encoding='utf-8') as f:
+        OBJECT_CLASS_FILENAME = f'{time.strftime("%Y%m%d-%H%M%S")}_class_names.csv'
+        with open(os.path.join(OUTPUT_PATH, OBJECT_CLASS_FILENAME), 'wt', encoding='utf-8') as f:
             # header
             f.write('class_name;count\n')
             # print output
@@ -405,5 +403,5 @@ if __name__ == '__main__':
     OCR_LOG_PATH = r"C:\Users\mhartman\PycharmProjects\transportation_mode_detection_Yolov5\from_cluster\20220216-152057_source_5min_excerpt_Old_Town_walk_in_Geneva_Switzerland_Autumn_2020_ocrlog.csv"
     classnames_to_consider = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'dog']
     # highest_ocr_confidence(OCR_LOG_PATH)
-    total_objects_per_class(LOG_PATH, classnames_to_consider, source_str='')
-    total_transportation_modes(LOG_PATH, source_str='')
+    total_objects_per_class(LOG_PATH, classnames_to_consider)
+    total_transportation_modes(LOG_PATH)
