@@ -158,7 +158,7 @@ def detect(opt):
                         bbox_ymin = bbox_bl[1]
                         bbox_xmax = bbox_tr[0]
                         bbox_ymax = bbox_tr[1]
-                        text = result[1]
+                        text = result[1].replace(';', ' ') # replaces all csv separator's in text!
                         certainty = result[2]
                         # here potentially set certainty threshold!!
                         ocr_entry = '{};{};{};{};{};{};{}\n'.format(frame_idx, text, certainty, bbox_xmin, bbox_ymin, bbox_xmax, bbox_ymax)

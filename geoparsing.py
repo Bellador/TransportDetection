@@ -49,11 +49,7 @@ def str_prefiltering(OCR_LOG_PATH, confidence_th = 0.0, min_str_length = 10, max
             try:
                 confidence = round(float(line[2]), 2)
             except Exception as e:
-                # print(confidence)
-                pass
-            # debugging
-            if frame_num == '101':
-                print()
+                print(f'[!] Geoparsing Error: {e}')
             # filter steps on pure string
             if confidence >= confidence_th:
                 count_special_chars = sum([1 for c in text if c in special_chars])
@@ -61,12 +57,15 @@ def str_prefiltering(OCR_LOG_PATH, confidence_th = 0.0, min_str_length = 10, max
                     polished_text = str_polishing(text, special_chars)
                     # check if only numbers
                     if not polished_text.isdigit():
-                        # print(f'{frame_num} - {confidence}: {polished_text}')
-                        frame_dict[frame_num]['string_list'].append(polished_text)
-                        frame_dict[frame_num]['bbox_xmin'].append(round(float(bbox_xmin)))
-                        frame_dict[frame_num]['bbox_ymin'].append(round(float(bbox_ymin)))
-                        frame_dict[frame_num]['bbox_xmax'].append(round(float(bbox_xmax)))
-                        frame_dict[frame_num]['bbox_ymax'].append(round(float(bbox_ymax)))
+                        try:
+                            # print(f'{frame_num} - {confidence}: {polished_text}')
+                            frame_dict[frame_num]['string_list'].append(polished_text)
+                            frame_dict[frame_num]['bbox_xmin'].append(round(float(bbox_xmin)))
+                            frame_dict[frame_num]['bbox_ymin'].append(round(float(bbox_ymin)))
+                            frame_dict[frame_num]['bbox_xmax'].append(round(float(bbox_xmax)))
+                            frame_dict[frame_num]['bbox_ymax'].append(round(float(bbox_ymax)))
+                        except Exception as e:
+                            print(f'[!] Geoparsing Error: {e}')
     # create independent copy of frame_dict
     frame_dict_complete = frame_dict
     # initialise HDBSCAN
