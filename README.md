@@ -39,7 +39,9 @@ To run the  `workflow.py` complete the folling steps:
 - `conda env create --file transport_env.yml`
 - `conda activate transport_env`
 2. Download video material (preferably as mp4), for YouTube one can use
+
 `git clone https://github.com/Bellador/YoutubeDownloader`
+
 3. Place videos in folder `input_videos`
 4. Run
 `nohup python -u workflow > mylogfile.log &` 
