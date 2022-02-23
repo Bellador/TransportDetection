@@ -73,8 +73,6 @@ def str_prefiltering(OCR_LOG_PATH, confidence_th = 0.0, min_str_length = 10, max
     # keep single frame strings as well as a combination of the strings from the same frame
     # based on spatial closeness of strings (use center point of bbox for reference)
     for frame_nr, element in frame_dict.items():
-        if frame_nr == '101':
-            print()
         string_list = element['string_list']
         # build df based on bboxes in for the same video frame
         df = pd.DataFrame(list(zip(element['bbox_xmin'], element['bbox_ymin'], element['bbox_xmax'], element['bbox_ymax'])), columns=['bbox_xmin', 'bbox_ymin', 'bbox_xmax', 'bbox_ymax'])
@@ -151,7 +149,7 @@ def geoparsing(frame_dict, PATH_, OUTPUT_PATH):
     # stores the df rows so that they can be added in one go -> better performance than df.append()
     df_row_storage = []
     # initialise dict that stores already geocoded and processed strings
-    processed_dict = defaultdict(lambda: {'name': None, 'geo': None})
+    processed_dict = defaultdict(lambda: {'frame_nr': None, 'location_name': None, 'geo': None})
     # start db connection
     db_querier = DbQuerier()
     # count geolocations found
@@ -166,22 +164,34 @@ def geoparsing(frame_dict, PATH_, OUTPUT_PATH):
                 df_row_storage.append(processed_dict[geoparsing_str])
                 continue
             else:
-                result = db_querier.levenshtein_dist_query(geoparsing_str)
-            # check result type
-            for item in result:
-                geolocations_found += 1
-                # retrieve lat lng coordinates and name if there is a match
-                name = item[0]
-                geo = item[1]
-                processed_dict[geoparsing_str]['name'] = name
-                processed_dict[geoparsing_str]['geo'] = trans_to_linestring(geo)
-                # append to result rows
-                df_row_storage.append(processed_dict[geoparsing_str])
-                print(f'location: {name}, geo: {geo}')
+                tries = 0
+                while tries <= 3:
+                    result = db_querier.levenshtein_dist_query(geoparsing_str)
+                    # check result type
+                    if result is not None:
+                        for item in result:
+                            geolocations_found += 1
+                            # retrieve lat lng coordinates and name if there is a match
+                            name = item[0]
+                            geo = item[1]
+                            processed_dict[geoparsing_str]['frame_nr'] = frame_nr
+                            processed_dict[geoparsing_str]['location_name'] = name
+                            processed_dict[geoparsing_str]['geo'] = trans_to_linestring(geo)
+                            # append to result rows
+                            df_row_storage.append(processed_dict[geoparsing_str])
+                            print(f'location name: {name}, geo: {geo}')
+                        break
+                    else:
+                        tries += 1
+
     # check if there was anything returned
     if len(df_row_storage) != 0:
         # load geneva shapefile
-        geneva_shp_df = gpd.read_postgis('SELECT * FROM geneva_poly', db_querier.conn, geom_col='st_polygonize')
+        try:
+            geneva_shp_df = gpd.read_postgis('SELECT * FROM geneva_poly', db_querier.conn, geom_col='st_polygonize')
+        except Exception as e:
+            print(f'[!] shp transaction error: {e} \n exiting.')
+            exit()
         geneva_shp_df.to_crs("EPSG:3857", inplace=True)
         geneva_shp_df.rename_geometry('geometry', inplace=True)
         # add row_storage to df in one go
@@ -198,27 +208,33 @@ def geoparsing(frame_dict, PATH_, OUTPUT_PATH):
         GEOLOCATIONS_FILENAME = f'{time.strftime("%Y%m%d_%H%M%S")}_geolocations.csv'
         with open(os.path.join(OUTPUT_PATH, GEOLOCATIONS_FILENAME), 'wt', encoding='utf-8') as f:
             # header
-            f.write('name;geo\n')
+            f.write('frame_nr;location_name;geo\n')
             for i_index, line in df.iterrows():
-                name = line[0]
-                geo = line[1]
-                f.write(f'{name};{geo}\n')
+                frame_nr = line[0]
+                location_name = line[1]
+                geo = line[2]
+                f.write(f'{frame_nr};{location_name};{geo}\n')
         print(f'\n[*] unique geolocation found: {df_len_without_duplicates}; (dublicates: {df_len_with_duplicates - df_len_without_duplicates})')
         ax = df.plot(figsize=(20, 20), linewidth=50, color='red')
         # label each location with its name
-        df.apply(lambda x: ax.annotate(text=x['name'], xy=x['geo'].centroid.coords[0], ha='center'), axis=1)
-        # set spatial extent of axis based on geneva shapefile bounds
-        geneva_bounds = geneva_shp_df.geometry.total_bounds
-        xlim = ([geneva_bounds[0], geneva_bounds[2]])
-        ylim = ([geneva_bounds[1], geneva_bounds[3]])
+        df.apply(lambda x: ax.annotate(text='frame ' + x['frame_nr'] + ' - ' + x['location_name'], xy=x['geo'].centroid.coords[0], ha='center'), axis=1)
+        # # set spatial extent of axis based on geneva shapefile bounds
+        # geneva_bounds = geneva_shp_df.geometry.total_bounds
+        # xlim = ([geneva_bounds[0], geneva_bounds[2]])
+        # ylim = ([geneva_bounds[1], geneva_bounds[3]])
+        # set spatial extend of axis based on detected freatures
+        feature_bounds = df.geometry.total_bounds
+        xlim = ([feature_bounds[0], feature_bounds[2]])
+        ylim = ([feature_bounds[1], feature_bounds[3]])
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
         # add basemap
         ctx.add_basemap(ax, url=ctx.providers.OpenStreetMap.Mapnik)
         # save figure
         log_path = PATH_.split('/')[-1][:-4]
-        fig_filename = f"./output/{time.strftime('%Y%m%d_%H%M%S')}_{log_path}_map.png"
-        plt.savefig(fig_filename)
+        fig_filename = f"{time.strftime('%Y%m%d_%H%M%S')}_{log_path}_map.png"
+        fig_filepath = os.path.join(OUTPUT_PATH, fig_filename)
+        plt.savefig(fig_filepath)
         plt.show()
         # pretty print df
         with pd.option_context('display.max_rows', None, 'display.max_columns', None):
@@ -228,6 +244,6 @@ def geoparsing(frame_dict, PATH_, OUTPUT_PATH):
         print(f'[!] geoparsing did not find any matches.')
 
 if __name__ == '__main__':
-    OCR_LOG_PATH = r"C:\Users\mhartman\PycharmProjects\transportation_mode_detection_Yolov5\to_manually_annotate\20220117-140340_source_5min_excerpt_Old_Town_walk_in_Geneva_Switzerland_Autumn_2020_ocrlog.csv"
+    OCR_LOG_PATH = './output/Walking_in_GENEVA_4K_Switzerland_083545/20220222-083545_Walking_in_GENEVA_4K_Switzerland_083545_ocrlog.csv'
     frame_dict = str_prefiltering(OCR_LOG_PATH)
-    df = geoparsing(frame_dict, OCR_LOG_PATH)
+    df = geoparsing(frame_dict, OCR_LOG_PATH, './output/Walking_in_GENEVA_4K_Switzerland_083545')

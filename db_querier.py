@@ -19,7 +19,7 @@ class DbQuerier:
             else:
                 password = input("Input database password: ")
             try:
-                conn = psycopg2.connect("host=127.0.0.1 dbname=osm user=postgres port=5433 password={}".format(password))
+                conn = psycopg2.connect("host=127.0.0.1 dbname=osm user=postgres port=5432 password={}".format(password))
                 return conn
             except Exception as e:
                 print(f"Error {e}. Try again.")
@@ -46,4 +46,6 @@ class DbQuerier:
                 result = cursor.fetchall()
                 return result
             except Exception as e:
-                print(f'\n[!] {e}')
+                print(f'\n[!] Transaction error: {e} \n [!] rollback.')
+                self.conn.rollback()
+                return None

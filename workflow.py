@@ -71,7 +71,7 @@ for video_index, video in enumerate(os.listdir(VIDEOS_PATH), 1):
     total_transportation_modes(TRACKLOG_PATH, video_folder_path)
     # 3. perform geoparsing on the ocr tracking log
     frame_dict = str_prefiltering(OCR_LOG_PATH)
-    geoparsing(frame_dict, TRACKLOG_PATH, video_folder_path)
+    geoparsing(frame_dict, OCR_LOG_PATH, video_folder_path)
     end = time.time()
     duration_in_hours = round((end - start) / 3600, 2)
     print(f'---------- PROCESSING TIME OF {video_index}: {duration_in_hours} hrs or {round(end-start, 2)} secs -------')
