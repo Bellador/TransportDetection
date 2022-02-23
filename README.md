@@ -1,105 +1,58 @@
 # Project to detect transportation modes in video footage
-also copied to README.md
 
-## My resources
+## Into
 
-- written project proposal: `"C:\Users\mhartman\Documents\PhD\Doktor Arbeit\Notes\20210415_indicator_design_proposal.md"`
-- python project: `"C:\Users\mhartman\PycharmProjects\transportation_mode_detection_Yolov5"`
-- ANACONDA ENV: `conda activate transportation_Yolov5_env` - contains everything for object detection, tracking and OCR
+This work investigates the potential of analysing user-generated street view imagery from videos to extract transportation modes, for example whether individuals are walking or cycling, using deep neural-networks. It addresses existing data gaps with respect to monitoring the sustainability of the mix of transport modes in cities, and complements existing methods based on stationary count stations or Google Street View. Preliminary results show the potential of the proposed workflow to automatically extract forms of transportation from videos as alternative data form.
 
+## Workflow
 
-From project folder `Yolov5_DeepSort_Pytorch` all files were copied to `transportation_mode_detection_Yolov5`; file `track.py`was changed for our needs, especially to work without command line. Also class_names tracking was added to link tracks to class_ids. (COPYIED MANY DEEP SORT CORE ELEMENTS THAT NEEDED TO BE CHANGED FROM THE transportation_mode_detection_YoloV4 VERSION - SEEMED LIKE IT WAS DELIBERATLY LEFT OUT OR SOMETHING SMH...) 
+The workflow uses object detection [YOLOv5](https://github.com/mikel-brostrom/Yolov5_DeepSort_Pytorch/) and object tracking [DeepSort](https://github.com/nwojke/deep_sort) to identify transportation mode
+relevant objects and track anc count them across frames. Relations of relevant objects are used to infer transportation modes, such as a person in a certain relation to a bicycle suspects a cyclist.
 
+:bicyclist: = :walking: + :bike:
 
-## TODO
-OCR was implemented on every video frame and logs for object tracking and OCR (e.g. detected street names) were implemented. - DONE!
+![visual](ugc_video_tracked_w_streetname.png)
 
-- Analysing and matching OCR output to place names in research area with [Levenshtein Distance (word similarity)](https://towardsdatascience.com/calculating-string-similarity-in-python-276e18a7d33a) on OSM street name set as gazzetteer. - DONE!
+### Geolocation
 
-Method 1 - Tried but issues to easily get all streets in the layers... (not used - see Method 2)
+Additionally to the transportation mode detection the workflow also perfroms text recognition which is referred to as Object Character Recognition (OCR) in Computer Vision terms. The extracted text is filtered for potential street names which are matched with the [Levenshtein Distance](https://towardsdatascience.com/calculating-string-similarity-in-python-276e18a7d33a) (word similarity) algorithm against a compiled dataset of OpenStreetMap street names which functions as gazetteer. The OCR is perfromed through the library [EasyOCR](https://pypi.org/project/easyocr/).
+Ultimately, the workflow compiles all detected geolocations from a video in a map as output.
 
-Presumably downloading a country [OSM dump e.g. Switzerland](https://download.geofabrik.de/europe/switzerland.html) which can then be imported into a local PostGIS enabled PostgresDB with the help of [osm2pgsql](https://osm2pgsql.org/) which was installed under the following path `"C:\Program Files\osm2pgsql-latest-x64"` also added to PATH as `osm2pgsql`
+![workflow](workflow.png)
 
-- OSM database with imported osm.pbf file for Switzerland was done with the following [manual](https://learnosm.org/en/osm-data/osm2pgsql/) and the custom cmd command `osm2pgsql -c -d osm -U postgres -W -H 127.0.0.1 -P 5433 -E 4326 -S default.style switzerland-latest.osm.pbf`. Flag `-E` specifies to which ESPG (SRID) the data is projected to!
+## Output
 
-- Import Geneva SHP file into db using shp2pgsql-gui.exe `C:\Program Files\PostgreSQL\13\bin\postgisgui\shp2pgsql-gui.exe`.
+The workflow generates a project folder for each video with the following output files:
 
+- track log CSV of all object IDs and their respective object class across frames
+- OCR log CSV of all text strings extracted from all frames
+- classnames CSV, a statistical summary of all detected classnames
+- transportation mode CSV, a statistical summary of all detected transportation modes
+- video MP4, containing visual bounding boxes and object ids
+- map PNG, showing all detected geolocations from potential streetnames and their frame nr
 
-Method 2 - Functioned easily
+## Setup
 
-- download OSM data for Geneva streets with the following Overpass API script:
-```
-[out:json][timeout:25];
-// gather results
-area["name"="Genève"];
-// query part for: “highway=* and name=*”
-way["highway"]["name"](area);
+To run the  `workflow.py` complete the folling steps:
 
-// print results
-out body;
->;
-out skel qt;
-```
-- export as geojson
-- import geojson into Postgres with ogr2ogr:
-`ogr2ogr -f "PostgreSQL" PG:"dbname=osm user=postgres password=XXXX port=5433" "C:\Users\mhartman\PycharmProjects\transportation_mode_detection_Yolov5\geoparsing\geneva_streets.geojson"` - easy! `-f` format
+1. Create the necessary virtual environment with Ananaconda
+- `conda env create --file transport_env.yml`
+- `conda activate transport_env`
+2. Download video material (preferably as mp4), for YouTube one can use
+`git clone https://github.com/Bellador/YoutubeDownloader`
+3. Place videos in folder `input_videos`
+4. Run
+`nohup python -u workflow > mylogfile.log &` 
 
+## Future Work
 
-## Run code
+- Using sound-feeds of videos to infer traffic volumes based on the varying decibel levels
 
-`conda activate transportation_Yolov5_env`
-
-`cd "C:\Users\mhartman\PycharmProjects\transportation_mode_detection_Yolov5"`
-
-`python object_tracker.py --source 0 --yolo_weights yolov5s.pt --img 640 --show-vid --save-txt`
 
 ## External resources
 
 The workflow is based on object (1) detection and (2) tracking as well as (3) Optical Character Recognition (OCR). These resources were taken from:
 
-- (1) YOLOv5 [Github](https://github.com/mikel-brostrom/Yolov5_DeepSort_Pytorch/)
-- (2) DeepSort [DeepSort](https://github.com/nwojke/deep_sort)
+- (1) [YOLOv5](https://github.com/mikel-brostrom/Yolov5_DeepSort_Pytorch/)
+- (2) [DeepSort](https://github.com/nwojke/deep_sort)
 - (3) [EasyOCR](https://pypi.org/project/easyocr/)
-
-
-
-# Serve Tensorflow street sign detection (FSNS) .pb model with Docker (DEAD END!)
-
-resources:
-- [FSNS Github](https://github.com/tensorflow/models/blob/master/research/attention_ocr/README.md#dataset)
-- [Tensorflow Serving](https://www.tensorflow.org/tfx/serving/serving_basic)
-- [Tensorflow Docker](https://www.tensorflow.org/tfx/serving/docker)
-
-1. export model
-
-`python model_export.py \
-  --checkpoint=model.ckpt-399731 \
-  --export_dir=./transportation_mode_detection_Yolov5\attention_ocr_fsns\fsns_attention_model`
-
-2. get tensorflow serving docker image
-
-`docker pull tensorflow/serving` (CPU)
-`docker pull tensorflow/serving:latest-gpu` (GPU)
-
-3. spin up tensorflow serving container
-`docker run -p 8501:8501 --mount type=bind,source="C:\Users\mhartman\PycharmProjects\transportation_mode_detection_Yolov5\attention_ocr_fsns\fsns_attention_model",target=/models/fsns_attention_model -e MODEL_NAME=fsns_attention_model -t tensorflow/serving`
-
--> binds/mounts the local model path to the `/models/` path on the container
-
-4. make model inferences over the container prediction API
-issues with curl request: [here](https://stackoverflow.com/questions/52208668/tensorflow-serving-error-invalid-argument-json-object-does-not-have-named-inp)
-
-4.1 get status of container: 
-
-`curl http://localhost:8501/v1/models/fsns_attention_model` --> state should be set to `available`
-
-4.2 get metadata of served model (e.g. input/output tensor): 
-
-`curl http://localhost:8501/v1/models/fsns_attention_model/metadata`
-
-
-# Relevant Literature
-
-- review paper 
-
-
