@@ -6,10 +6,9 @@ This work investigates the potential of analysing user-generated street view ima
 
 ## Workflow
 
-The workflow uses object detection [YOLOv5](https://github.com/mikel-brostrom/Yolov5_DeepSort_Pytorch/) and object tracking [DeepSort](https://github.com/nwojke/deep_sort) to identify transportation mode
-relevant objects and track anc count them across frames. Relations of relevant objects are used to infer transportation modes, such as a person in a certain relation to a bicycle suspects a cyclist.
+![workflow](workflow.png)
 
-:bicyclist: = :walking: + :bike:
+The workflow uses object detection [YOLOv5](https://github.com/mikel-brostrom/Yolov5_DeepSort_Pytorch/) and object tracking [DeepSort](https://github.com/nwojke/deep_sort) to identify transportation mode relevant objects and track anc count them across frames. Relations of relevant objects are used to infer transportation modes, such as a person in a certain relation to a bicycle suspects a cyclist. --> :bicyclist: = :walking: + :bike:
 
 ![visual](ugc_video_tracked_w_streetname.png)
 
@@ -18,7 +17,7 @@ relevant objects and track anc count them across frames. Relations of relevant o
 Additionally to the transportation mode detection the workflow also perfroms text recognition which is referred to as Object Character Recognition (OCR) in Computer Vision terms. The extracted text is filtered for potential street names which are matched with the [Levenshtein Distance](https://towardsdatascience.com/calculating-string-similarity-in-python-276e18a7d33a) (word similarity) algorithm against a compiled dataset of OpenStreetMap street names which functions as gazetteer. The OCR is perfromed through the library [EasyOCR](https://pypi.org/project/easyocr/).
 Ultimately, the workflow compiles all detected geolocations from a video in a map as output.
 
-![workflow](workflow.png)
+![map](map_example.png)
 
 ## Output
 
