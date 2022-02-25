@@ -14,7 +14,7 @@ from shapely.geometry import LineString, Point
 '''
 !!! use anaconda env: geonenv on local machine (windows) - on cluster myenv contains all needed packages for all scripts!!!!
 '''
-csv.field_size_limit(sys.maxsize)
+# csv.field_size_limit(sys.maxsize)
 
 import os
 # pyproj fix 'no database context specified'
@@ -200,11 +200,10 @@ def geoparsing(frame_dict, PATH_, OUTPUT_PATH):
         df.to_crs("EPSG:3857", inplace=True)
         # join both dfs
         # df = gpd.overlay(matchted_geoms_df, geneva_shp_df, how='union', keep_geom_type=False)
-        df_len_with_duplicates = df.shape[0]
         df.drop_duplicates(inplace=True)
-        df_len_without_duplicates = df.shape[0]
         # save geolocations to output file
         # define source string
+        unique_location_names = df['location_name'].unique()
         GEOLOCATIONS_FILENAME = f'{time.strftime("%Y%m%d_%H%M%S")}_geolocations.csv'
         with open(os.path.join(OUTPUT_PATH, GEOLOCATIONS_FILENAME), 'wt', encoding='utf-8') as f:
             # header
@@ -214,7 +213,7 @@ def geoparsing(frame_dict, PATH_, OUTPUT_PATH):
                 location_name = line[1]
                 geo = line[2]
                 f.write(f'{frame_nr};{location_name};{geo}\n')
-        print(f'\n[*] unique geolocation found: {df_len_without_duplicates}; (dublicates: {df_len_with_duplicates - df_len_without_duplicates})')
+        print(f'\n[*] unique geolocation found: {len(unique_location_names)}')
         ax = df.plot(figsize=(20, 20), linewidth=50, color='red')
         # label each location with its name
         df.apply(lambda x: ax.annotate(text='frame ' + x['frame_nr'] + ' - ' + x['location_name'], xy=x['geo'].centroid.coords[0], ha='center'), axis=1)
@@ -242,6 +241,7 @@ def geoparsing(frame_dict, PATH_, OUTPUT_PATH):
         return df
     else:
         print(f'[!] geoparsing did not find any matches.')
+        return None
 
 if __name__ == '__main__':
     OCR_LOG_PATH = './output/Walking_in_GENEVA_4K_Switzerland_083545/20220222-083545_Walking_in_GENEVA_4K_Switzerland_083545_ocrlog.csv'

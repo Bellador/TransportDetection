@@ -9,10 +9,7 @@ import sys
 import time
 import subprocess
 # import other python objects from helper scripts
-from analyse_tracklog import total_objects_per_class
-from analyse_tracklog import total_transportation_modes
-from geoparsing import str_prefiltering
-from geoparsing import geoparsing
+from output_analysis_wrapper import perform_analysis
 
 
 # 0. load input videos from directory and iterate over them
@@ -23,15 +20,15 @@ for video_index, video in enumerate(os.listdir(VIDEOS_PATH), 1):
     start = time.time()
     # define tracklog and ocrlog filenames for that video
     video_name = video[:-4] + '_' + time.strftime("%H%M%S")
-    video_folder_path = os.path.join(SAVE_PATH, video_name)
+    OUTPUT_VIDEO_FOLDER_PATH = os.path.join(SAVE_PATH, video_name)
     # create a folder with the video name in the output folder that stores all related files
-    os.mkdir(video_folder_path)
+    os.mkdir(OUTPUT_VIDEO_FOLDER_PATH)
     tracklog_filename = f'{time.strftime("%Y%m%d-%H%M%S")}_{video_name}_tracklog.csv'
     ocr_log_filename = f'{time.strftime("%Y%m%d-%H%M%S")}_{video_name}_ocrlog.csv'
     # NEW create new CSV log_file with input video name and ocrlog.csv ending
-    OUTPUT_VIDEO_PATH = os.path.join(video_folder_path, video)
-    TRACKLOG_PATH = os.path.join(video_folder_path, tracklog_filename)
-    OCR_LOG_PATH = os.path.join(video_folder_path, ocr_log_filename)
+    OUTPUT_VIDEO_PATH = os.path.join(OUTPUT_VIDEO_FOLDER_PATH, video)
+    TRACKLOG_PATH = os.path.join(OUTPUT_VIDEO_FOLDER_PATH, tracklog_filename)
+    OCR_LOG_PATH = os.path.join(OUTPUT_VIDEO_FOLDER_PATH, ocr_log_filename)
     # write header of log fileS
     with open(TRACKLOG_PATH, 'wt', encoding='utf-8') as f:
         f.write('frame_idx;identity;class_name;bbox_top;bbox_left;bbox_w;bbox_h\n')
@@ -63,15 +60,8 @@ for video_index, video in enumerate(os.listdir(VIDEOS_PATH), 1):
     # 1.2 the tracking and OCR log filenames are stored in ./inference/tmp_output/tmp_log_filenames.txt
     print(f'[*] tracking log: {TRACKLOG_PATH}')
     print(f'[*] OCR log: {OCR_LOG_PATH}')
-    # 2. perform the transportation mode detection on the tracking log
-    classnames_to_consider = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'dog']
-    source_str = INPUT_VIDEO_PATH.split('/')[-1][:-4]
-    total_objects_per_class(TRACKLOG_PATH, video_folder_path, classnames_to_consider)
-    # highest_ocr_confidence(OCR_LOG_PATH)
-    total_transportation_modes(TRACKLOG_PATH, video_folder_path)
-    # 3. perform geoparsing on the ocr tracking log
-    frame_dict = str_prefiltering(OCR_LOG_PATH)
-    geoparsing(frame_dict, OCR_LOG_PATH, video_folder_path)
+    # # start complete output analysis
+    # perform_analysis(TRACKLOG_PATH, OCR_LOG_PATH, OUTPUT_VIDEO_FOLDER_PATH, video[:-4])
     end = time.time()
     duration_in_hours = round((end - start) / 3600, 2)
     print(f'---------- PROCESSING TIME OF {video_index}: {duration_in_hours} hrs or {round(end-start, 2)} secs -------')
