@@ -28,7 +28,16 @@ The workflow generates a project folder for each video with the following output
 - classnames CSV, a statistical summary of all detected classnames
 - transportation mode CSV, a statistical summary of all detected transportation modes
 - video MP4, containing visual bounding boxes and object ids
-- map PNG, showing all detected geolocations from potential streetnames and their frame nr
+
+### Plots and figures
+- map PNG, showing all detected geolocations from potential streetnames, each with a bargraph displaying transportation mode counts (see figure above)
+- interactive plot HTML for each video (1), showing the distribution of detected objects and locations over the entire video
+- interactive plot HTML, one for all videos (2), showing the detected object distribution for all locations from all videos
+
+![plots](example_plots.png)
+
+(respective examples can be found in `./example_plots`)
+
 
 ## Setup
 
@@ -42,8 +51,13 @@ To run the  `workflow.py` complete the folling steps:
 `git clone https://github.com/Bellador/YoutubeDownloader`
 
 3. Place videos in folder `input_videos`
-4. Run
-`nohup python -u workflow > mylogfile.log &` 
+4. Run `nohup python -u workflow > mylogfile.log &` 
+
+
+## Presentation slides
+
+GISRUK 2022 short presentation slides can be found under `./related_documents/marp_presentation.html` (to be added)
+
 
 ## Future Work
 

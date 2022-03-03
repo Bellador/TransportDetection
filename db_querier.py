@@ -40,12 +40,12 @@ class DbQuerier:
                 query = sql.SQL(f'''SELECT name, ST_AsText(wkb_geometry) FROM geneva_streets as x WHERE levenshtein_less_equal(x.name, '{escaped_geoparsing_str}', 2) <= 2;''').\
                     format(escaped_geoparsing_str=sql.Identifier(escaped_geoparsing_str))
                 # check
-                print(f'\n{query.as_string(self.conn)}')
+                # print(f'\r{query.as_string(self.conn)}', end='')
                 # execute query
                 cursor.execute(query)
                 result = cursor.fetchall()
                 return result
             except Exception as e:
-                print(f'\n[!] Transaction error: {e} \n [!] rollback.')
+                # print(f'\n[!] Transaction error: {e} \n [!] rollback.')
                 self.conn.rollback()
                 return None

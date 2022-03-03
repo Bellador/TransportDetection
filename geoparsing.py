@@ -1,12 +1,11 @@
+import os
 import sys
 import csv
 import time
 import hdbscan
 import pandas as pd
 import geopandas as gpd
-import contextily as ctx
 from itertools import product
-import matplotlib.pyplot as plt
 from db_querier import DbQuerier
 from collections import defaultdict
 from shapely.geometry import LineString, Point
@@ -16,7 +15,6 @@ from shapely.geometry import LineString, Point
 '''
 # csv.field_size_limit(sys.maxsize)
 
-import os
 # pyproj fix 'no database context specified'
 # os.environ["PROJ_LIB"] = r"C:\Users\mhartman\Anaconda3\envs\transportation_Yolov5_env\Library\share\proj"
 
@@ -36,10 +34,10 @@ def str_prefiltering(OCR_LOG_PATH, confidence_th = 0.0, min_str_length = 10, max
     special_chars = "\"][()|{}_~€$!?%&+,;:~><*@¦=#^£\/´`'\''"
     # open and iterate over tracking log
     with open(OCR_LOG_PATH, 'r', encoding='utf-8') as f:
-        reader = csv.reader(f, delimiter=';', quotechar='|')
+        reader = csv.reader(f, delimiter=';', quoting=csv.QUOTE_NONE) #, quotechar='|'
         # skip header
         next(reader)
-        for index, line in enumerate(reader):
+        for line in reader:
             frame_num = line[0]
             text = line[1]
             bbox_xmin = line[3]
@@ -49,7 +47,8 @@ def str_prefiltering(OCR_LOG_PATH, confidence_th = 0.0, min_str_length = 10, max
             try:
                 confidence = round(float(line[2]), 2)
             except Exception as e:
-                print(f'[!] Geoparsing Error: {e}')
+                pass
+                # print(f'[!] Geoparsing Error: {e}')
             # filter steps on pure string
             if confidence >= confidence_th:
                 count_special_chars = sum([1 for c in text if c in special_chars])
@@ -140,7 +139,7 @@ def trans_to_linestring(str_line):
     return line_string
 
 
-def geoparsing(frame_dict, PATH_, OUTPUT_PATH):
+def geoparsing(frame_dict, OUTPUT_PATH, video_name):
     '''
     calculate Levenshtein Distance (word similarity) [https://towardsdatascience.com/calculating-string-similarity-in-python-276e18a7d33a]
     between the OCR detected words above a certain threshold and a gazetteer.
@@ -179,7 +178,7 @@ def geoparsing(frame_dict, PATH_, OUTPUT_PATH):
                             processed_dict[geoparsing_str]['geo'] = trans_to_linestring(geo)
                             # append to result rows
                             df_row_storage.append(processed_dict[geoparsing_str])
-                            print(f'location name: {name}, geo: {geo}')
+                            # print(f'location name: {name}, geo: {geo}')
                         break
                     else:
                         tries += 1
@@ -214,30 +213,13 @@ def geoparsing(frame_dict, PATH_, OUTPUT_PATH):
                 geo = line[2]
                 f.write(f'{frame_nr};{location_name};{geo}\n')
         print(f'\n[*] unique geolocation found: {len(unique_location_names)}')
-        ax = df.plot(figsize=(20, 20), linewidth=50, color='red')
-        # label each location with its name
-        df.apply(lambda x: ax.annotate(text='frame ' + x['frame_nr'] + ' - ' + x['location_name'], xy=x['geo'].centroid.coords[0], ha='center'), axis=1)
-        # # set spatial extent of axis based on geneva shapefile bounds
-        # geneva_bounds = geneva_shp_df.geometry.total_bounds
-        # xlim = ([geneva_bounds[0], geneva_bounds[2]])
-        # ylim = ([geneva_bounds[1], geneva_bounds[3]])
-        # set spatial extend of axis based on detected freatures
-        feature_bounds = df.geometry.total_bounds
-        xlim = ([feature_bounds[0], feature_bounds[2]])
-        ylim = ([feature_bounds[1], feature_bounds[3]])
-        ax.set_xlim(xlim)
-        ax.set_ylim(ylim)
-        # add basemap
-        ctx.add_basemap(ax, url=ctx.providers.OpenStreetMap.Mapnik)
-        # save figure
-        log_path = PATH_.split('/')[-1][:-4]
-        fig_filename = f"{time.strftime('%Y%m%d_%H%M%S')}_{log_path}_map.png"
-        fig_filepath = os.path.join(OUTPUT_PATH, fig_filename)
-        plt.savefig(fig_filepath)
-        plt.show()
         # pretty print df
-        with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-            print(df)
+        # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        #     print(df)
+        # pickle dataframe
+        pickle_filename = f"{time.strftime('%Y%m%d_%H%M%S')}_{video_name}_pickle.pkl"
+        pickle_filepath = os.path.join(OUTPUT_PATH, pickle_filename)
+        df.to_pickle(pickle_filepath)
         return df
     else:
         print(f'[!] geoparsing did not find any matches.')

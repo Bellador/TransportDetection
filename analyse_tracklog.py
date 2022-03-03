@@ -268,7 +268,7 @@ def total_transportation_modes(LOG_PATH, OUTPUT_PATH):
             ]
 
     # people object ids (potential pedestrians) not yet assigned to a transportation mode
-    # key: person object id, value: frame nr of first occurence
+    # key: person object id, value: frame nr of first occurrence
     all_unassigned_people_dict = defaultdict(lambda: dict({'frame_nr': 0}))
     # store all assigned objects ids ordered by class id
     # key: class_name, value: list of object ids
@@ -343,14 +343,15 @@ def total_transportation_modes(LOG_PATH, OUTPUT_PATH):
                 f.write(_string)
                 print_string += _string
 
-        print('[+] detected active transportation modes:')
-        print(print_string)
+        print('[+] detected active transportation modes')
+        # print(print_string)
         return detected_transportation_modes_dict
 
 
-def total_objects_per_class(LOG_PATH, OUTPUT_PATH, classnames_to_consider):
+def total_objects_per_class(LOG_PATH, OUTPUT_PATH):
     # instantiate default dict that stores detected object information
     d = defaultdict(lambda: dict({'total_count': 0, 'count_per_frame': defaultdict(lambda: dict({'count': 0}))}))
+    classnames_to_consider = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'dog']
     # coco_class_names
     names = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
             'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
@@ -386,10 +387,10 @@ def total_objects_per_class(LOG_PATH, OUTPUT_PATH, classnames_to_consider):
             # header
             f.write('class_name;count\n')
             # print output
-            print('[+] detected mobility related objects:')
+            print('[+] detected mobility related objects')
             for key, value in d.items():
                 if key in classnames_to_consider:
-                    print(f'{key}: {value["total_count"]}')
+                    # print(f'{key}: {value["total_count"]}')
                     # add to output file
                     f.write(f'{key};{value["total_count"]}\n')
     return d

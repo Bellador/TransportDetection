@@ -9,7 +9,7 @@ import sys
 import time
 import subprocess
 # import other python objects from helper scripts
-from output_analysis_wrapper import perform_analysis
+from output_analysis_wrapper import start_analysis
 
 
 # 0. load input videos from directory and iterate over them
@@ -66,4 +66,6 @@ for video_index, video in enumerate(os.listdir(VIDEOS_PATH), 1):
     duration_in_hours = round((end - start) / 3600, 2)
     print(f'---------- PROCESSING TIME OF {video_index}: {duration_in_hours} hrs or {round(end-start, 2)} secs -------')
     print('***' * 30)
+# after videos are processed perform the output analysis inc. figures and plots
+start_analysis(SAVE_PATH)
 print('[*] All videos processed. Done.')

@@ -1,39 +1,218 @@
 import os
 import time
-# figure plotting
+import warnings
+
 import pandas as pd
-import matplotlib.pyplot as plt
-import plotly
-import plotly.express as px
+
+warnings.simplefilter(action='ignore', category=FutureWarning)
+# figure plotting
 import plotly.graph_objs as go
-from plotly.subplots import make_subplots
 from collections import defaultdict
 # map plotting
 import contextily as ctx
+# from mpl_toolkits.basemap import Basemap
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
-def map_plotting(location_names_df, VIDEO_FOLDER_PATH, video_name):
-    ax = location_names_df.plot(figsize=(20, 20), linewidth=50, color='red')
+
+def all_locations_plot(CSV_PATH, OUTPUT_PATH, classnames_for_map=['pedestrians', 'cyclist', 'car_driver']):
+    '''
+    think about how mutliple location entries shall be treated
+
+    '''
+    location_df = pd.read_csv(CSV_PATH, delimiter=';')
+    # unique names frop by location is only one way to deal with the data - analysing difference instances of the same location
+    # could also be extremely interesting from an analysis perspective
+    location_df.drop_duplicates(subset=['location_name'], inplace=True)
+    # initialise figure
+    fig = go.Figure()
+    # add location data
+    for classname in classnames_for_map:
+        fig.add_trace(go.Bar(x=location_df['location_name'], y=location_df[classname], name=classname))
+
+    fig.update_layout(
+        xaxis_title="location names",
+        yaxis_title="count",
+        barmode='stack'
+    )
+    # fig.show()
+    print('[+] saving all locations figure as interactive HTML plot')
+    OUTPUT_HTML = os.path.join(OUTPUT_PATH, 'location_statistics_plot.html')
+    fig.write_html(OUTPUT_HTML)
+
+def output_location_statistics(total_objects_dict, total_modes_dict, location_names_df, VIDEOS_STORE_PATH, frame_buffer=5000):
+    '''
+    create location statistics in CSV output across all videos
+    this includes the found objects, and transportation modes across videos around detected locations
+    based on a defined frame_buffer +/- of the frame where the location was found.
+    '''
+    dicts_ = [total_objects_dict, total_modes_dict]
+    classnames_to_output = "airplane;backpack;bench;bicycle;bird;boat_driver;bus;bus_driver;car;car_driver;chair;clock;cyclist;dogwalker;handbag;motorcycle;motorcyclist;pedestrians;person;potted plant;refrigerator;skateboard;suitcase;traffic light;train_driver;truck;truck_driver".split(';')
+    data_dict = defaultdict(lambda: {'frame_nr': None, 'classnames': defaultdict(dict)})
+    # create unique location names df
+    unique_location_names_df = location_names_df.drop_duplicates(subset=['location_name'])
+    # iterate over all input, add traces for each object, mode and add locations to x-axis
+    for row_index, row in unique_location_names_df.iterrows():
+        location_name = row['location_name']
+        location_frame_nr = int(row['frame_nr'])
+        # defining frame buffer boundaries, in which modes and objects are counted and attributed to the location
+        upper_frame_limit = location_frame_nr + int((frame_buffer / 2))
+        lower_frame_limit = location_frame_nr - int((frame_buffer / 2))
+        for dict_ in dicts_:
+            for classname, value in dict_.items():
+                # aggregate counts across frames based on the defined bins_per_video
+                counts_in_frame_buffer = 0
+                processed_frames = []
+                for index, (frame, value_) in enumerate(value['count_per_frame'].items()):
+                    frame = int(frame)
+                    if frame >= lower_frame_limit and frame <= upper_frame_limit and frame not in processed_frames:
+                        counts_in_frame_buffer += value_['count']
+                        processed_frames.append(frame)
+                data_dict[location_name]['classnames'][classname] = counts_in_frame_buffer
+        data_dict[location_name]['frame_nr'] = location_frame_nr
+
+    # write/append to CSV
+    delimiter = ';'
+    ## find index of path separator
+    # slash_index = [i for i, ltr in enumerate(OUTPUT_VIDEO_FOLDER_PATH) if ltr == '\\'][-1]
+    filename = f'location_statistics_{frame_buffer}_buffer.csv'
+    # CSV_LOCATION_STATISTCS_OUTPUT_PATH = os.path.join(OUTPUT_VIDEO_FOLDER_PATH[:slash_index], filename)
+    CSV_LOCATION_STATISTCS_OUTPUT_PATH = os.path.join(VIDEOS_STORE_PATH, filename)
+    # check if file was already create from previous video analysis
+    if not os.path.isfile(CSV_LOCATION_STATISTCS_OUTPUT_PATH):
+        print(f'[!] locations statistics file NOT there')
+        # create header for CSV
+        base_string = f'{delimiter}'.join([classname for classname in classnames_to_output])
+        header = f'location_name{delimiter}frame_nr{delimiter}' + base_string
+        # newly create CSV and write header
+        with open(CSV_LOCATION_STATISTCS_OUTPUT_PATH, 'wt', encoding='utf-8') as f:
+            f.write(f'{header}\n')
+
+    print(f'[!] locations statistics file  EXISTS')
+    # append the location statistics from the current video to the output CSV
+    with open(CSV_LOCATION_STATISTCS_OUTPUT_PATH, 'at', encoding='utf-8') as f:
+        for location_name, value in data_dict.items():
+            csv_location_line = f'{location_name}{delimiter}{value["frame_nr"]}'
+            # to make sure it is the right order and missing key values are denoted with 0
+            for classname in classnames_to_output:
+                if classname in value['classnames']:
+                    count_value = value['classnames'][classname]
+                else:
+                    count_value = 0
+                csv_location_line += f'{delimiter}{count_value}'
+            # write line for location
+            f.write(f'{csv_location_line}\n')
+    return CSV_LOCATION_STATISTCS_OUTPUT_PATH
+
+
+# function to create inset axes and plot bar chart on it
+# this is good for 3 items bar chart
+def build_bar(mapx, mapy, ax, width, xvals=['a','b','c'], yvals=[1,4,2], fcolors=['r','y','b']):
+    ax_h = inset_axes(ax, width=width,
+                    height=width,
+                    loc=3,
+                    bbox_to_anchor=(mapx, mapy),
+                    bbox_transform=ax.transData,
+                    borderpad=0,
+                    axes_kwargs={'alpha': 0.35, 'visible': True})
+    for x,y,c in zip(xvals, yvals, fcolors):
+        ax_h.bar(x, y, label=str(x), fc=c)
+    #ax.xticks(range(len(xvals)), xvals, fontsize=10, rotation=30)
+    ax_h.axis('off')
+    return ax_h
+
+def map_plotting(total_objects_dict, total_modes_dict, location_names_df, VIDEO_FOLDER_PATH, video_name, frame_buffer=5000):
+    # count transportation modes and objects in a given buffer around detected locations, for location specific statistics
+    # classnames considered for the map for function map_plotting
+    classnames_for_map = ['pedestrians', 'cyclist', 'car_driver']
+    dicts_ = [total_objects_dict, total_modes_dict]
+    map_plotting_data = defaultdict(dict)
+    # create unique location names df
+    unique_location_names_df = location_names_df.drop_duplicates(subset=['location_name'])
+    # check validity of object geometry to avoid parsing errors later on
+    indexes_to_drop = []
+    for index, row in unique_location_names_df.iterrows():
+        try:
+            row['geo'].centroid.coords[0]
+        except:
+            indexes_to_drop.append(index)
+    unique_location_names_df.drop(indexes_to_drop, inplace=True)
+
+    # set spatial extend of axis based on detected features
+    feature_bounds = unique_location_names_df.geometry.total_bounds
+    x_span = feature_bounds[2] - feature_bounds[0]
+    y_span = feature_bounds[3] - feature_bounds[1]
+    xlim = ([(feature_bounds[0] - (x_span * 0.5)), (feature_bounds[2] + (x_span * 0.5))])
+    ylim = ([(feature_bounds[1] - (y_span * 0.5)), (feature_bounds[3] + (y_span * 0.5))])
+    # iterate over all input, add traces for each object, mode and add locations to x-axis
+    for row_index, row in unique_location_names_df.iterrows():
+        location_name = row['location_name']
+        location_frame_nr = int(row['frame_nr'])
+        # defining frame buffer boundaries, in which modes and objects are counted and attributed to the location
+        upper_frame_limit = location_frame_nr + int((frame_buffer / 2))
+        lower_frame_limit = location_frame_nr - int((frame_buffer / 2))
+        for dict_ in dicts_:
+            for classname, value in dict_.items():
+                if classname in classnames_for_map:
+                    # aggregate counts across frames based on the defined bins_per_video
+                    counts_in_frame_buffer = 0
+                    processed_frames = []
+                    for index, (frame, value_) in enumerate(value['count_per_frame'].items()):
+                        frame = int(frame)
+                        if frame >= lower_frame_limit and frame <= upper_frame_limit and frame not in processed_frames:
+                            counts_in_frame_buffer += value_['count']
+                            processed_frames.append(frame)
+                    map_plotting_data[location_name][classname] = counts_in_frame_buffer
+
+    # initialise figure
+    fig, ax = plt.subplots(figsize=(15, 14))
+    unique_location_names_df.plot(linewidth=4, color='red', ax=ax) #figsize=(20, 20),
+    # add x y as separate columns
+    y_offset = y_span * 0.05
+    x_offset = x_span * 0.05
+    unique_location_names_df['x'] = unique_location_names_df.centroid.map(lambda p: p.x) - x_offset
+    unique_location_names_df['y'] = unique_location_names_df.centroid.map(lambda p: p.y) + y_offset
+
+    bar_width = 0.5
+    colors = ['green', 'orange', 'blue']
+
+    for location_name, value in map_plotting_data.items():
+        x_cord = unique_location_names_df.loc[unique_location_names_df.location_name == location_name, 'x'].copy()
+        y_cord = unique_location_names_df.loc[unique_location_names_df.location_name == location_name, 'y'].copy()
+        y_vals = [map_plotting_data[location_name][classname] for classname in classnames_for_map]
+        # print(f'bar chart - location: {location_name}, y_vals: {y_vals}, classnames: {classnames_for_map}')
+        bax = build_bar(x_cord, y_cord, ax, bar_width, xvals=['a', 'b', 'c'],
+                        yvals=y_vals,
+                        fcolors=colors)
     # label each location with its name
-    location_names_df.apply(lambda x: ax.annotate(text='frame ' + x['frame_nr'] + ' - ' + x['location_name'],
-                                   xy=x['geo'].centroid.coords[0], ha='center'), axis=1)
-    # set spatial extend of axis based on detected freatures
-    feature_bounds = location_names_df.geometry.total_bounds
-    xlim = ([feature_bounds[0], feature_bounds[2]])
-    ylim = ([feature_bounds[1], feature_bounds[3]])
+    unique_location_names_df.apply(lambda x: ax.annotate(text=x['location_name'],
+                                                         xy=x['geo'].centroid.coords[0],
+                                                         ha='center'),
+                                                         axis=1)
+    # create legend (of the 3 classes)
+    legend_patch = []
+    for index, classname in enumerate(classnames_for_map):
+        patch = mpatches.Patch(color=colors[index], label=classnames_for_map[index])
+        legend_patch.append(patch)
+    ax.legend(handles=legend_patch, loc=1)
+    # ylim = ([feature_bounds[1], feature_bounds[3]])
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
+    ax.set_axis_off()
     # add basemap
     ctx.add_basemap(ax, url=ctx.providers.OpenStreetMap.Mapnik)
     # save figure
     fig_filename = f"{time.strftime('%Y%m%d_%H%M%S')}_{video_name}_map.png"
     fig_filepath = os.path.join(VIDEO_FOLDER_PATH, fig_filename)
     plt.savefig(fig_filepath)
-    plt.show()
+    # plt.show()
 
 def figure_plotting(total_objects_dict, total_modes_dict, location_names_df, video_folder_path, video_name, bins_per_video = 20):
-    classnames_to_consider = ['person', 'bicycle', 'car', 'motorcycle', 'bus', 'train', 'truck', 'pedestrians',
+    # classnames considered for this plot
+    classnames_for_figure = ['person', 'bicycle', 'car', 'motorcycle', 'bus', 'train', 'truck', 'pedestrians',
                               'dogwalker', 'cyclist', 'motorcyclist', 'car_driver', 'truck_driver', 'bus_driver', 'train_driver']
-
+    # initialise figure
     fig = go.Figure()
     dicts_ = [total_objects_dict, total_modes_dict]
     # find highest frame with a present object - a plot x range will be defined from 0 to that max frame
@@ -53,11 +232,11 @@ def figure_plotting(total_objects_dict, total_modes_dict, location_names_df, vid
     # iterate over all input, add traces for each object, mode and add locations to x-axis
     for dict_ in dicts_:
         for key_, value in dict_.items():
-            if key_ in classnames_to_consider:
+            if key_ in classnames_for_figure:
                 # aggregate counts across frames based on the defined bins_per_video
                 counts_per_bin = []
                 processed_frames = []
-                for x_bin, real_bin in zip(x_bins, real_bins):
+                for bin_index, (x_bin, real_bin) in enumerate(zip(x_bins, real_bins)):
                     count_aggregate = 0
                     for index, (frame, value_) in enumerate(value['count_per_frame'].items()):
                         frame = int(frame)
@@ -69,8 +248,8 @@ def figure_plotting(total_objects_dict, total_modes_dict, location_names_df, vid
                 if max(counts_per_bin) > 0:
                     fig.add_trace(go.Bar(x=x_bins, y=counts_per_bin, name=key_, width=frames_per_bin))
                 else:
-                    print(f'[*] class {key_} not in plot, count: {count_aggregate}')
-
+                    # print(f'[*] class {key_} not in plot, count: {count_aggregate}')
+                    pass
     # sort df by frame_nr and location name
     location_names_df.sort_values(by=['frame_nr', 'location_name'], inplace=True)
     # keep track of processed location names and their frame_nr, only include multiple same location if their frames are far apart
@@ -78,12 +257,21 @@ def figure_plotting(total_objects_dict, total_modes_dict, location_names_df, vid
     # if previously processed frames are to close to one another, they might overlap
     previously_processed_frame = {'frame_nr': 0, 'switch': True}
     allowed_frame_gap = 6000 # if more than 6000 frames are between the same location name they are plotted multiple times
+    unique_location_names_df = location_names_df.drop_duplicates(subset=['location_name'])
+    for index, row in unique_location_names_df.iterrows():
+        location_name = row['location_name']
+        frame_nr = int(row['frame_nr'])
+        # add transportation mode counts also to dict for map plotting,
+        # 1. find out in which bin the location_name is present
+        location_bin_index = [index_ for index_, real_bin in enumerate(real_bins) if frame_nr < real_bin][0]
+
     # add location_names at the frames where they were detected
     if location_names_df is not None:
         for index, row in location_names_df.iterrows():
             to_plot = False
             location_name = row['location_name']
             frame_nr = int(row['frame_nr'])
+            # process location names for figure annotation
             if location_name in plotted_locations:
                 existing_frame_nr = plotted_locations[location_name]
                 if (existing_frame_nr + allowed_frame_gap) <= frame_nr:
@@ -97,6 +285,7 @@ def figure_plotting(total_objects_dict, total_modes_dict, location_names_df, vid
                 # add to dict
                 plotted_locations[location_name] = frame_nr
             if to_plot:
+                # add offsets to avoid annotation overlap
                 y_axis_offset = -30
                 x_axis_offset = 20
                 # check potential overlap between annotations
@@ -116,7 +305,6 @@ def figure_plotting(total_objects_dict, total_modes_dict, location_names_df, vid
                     yref="y",
                     text=location_name,
                     showarrow=True,
-
                     align="center",
                     arrowhead=2,
                     arrowsize=1,
@@ -130,20 +318,12 @@ def figure_plotting(total_objects_dict, total_modes_dict, location_names_df, vid
                     bgcolor="#ff7f0e",
                     opacity=1
                 )
-
-                # font = dict(
-                #     size=16,
-                #     color="#000000"
-                # ),
-
     fig.update_layout(
-        title=f"Video: {video_name}",
         xaxis_title="frames",
         yaxis_title="count",
-        legend_title="Legend Title",
         barmode='stack'
     )
     # fig.show()
-    # print('[+] saving figure as interactive HTML plot')
-    # OUTPUT_HTML = os.path.join(video_folder_path, f'{video_name}_plot.html')
-    # fig.write_html(OUTPUT_HTML)
+    print('[+] saving figure as interactive HTML plot')
+    OUTPUT_HTML = os.path.join(video_folder_path, f'{video_name}_plot.html')
+    fig.write_html(OUTPUT_HTML)
