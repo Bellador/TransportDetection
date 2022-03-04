@@ -51,7 +51,7 @@ To run the  `workflow.py` complete the folling steps:
 `git clone https://github.com/Bellador/YoutubeDownloader`
 
 3. Place videos in folder `input_videos`
-4. Run `nohup python -u workflow > mylogfile.log &` 
+4. Run `nohup python -u workflow.py > mylogfile.log &` 
 
 
 ## Presentation slides
