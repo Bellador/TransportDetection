@@ -30,7 +30,35 @@ def all_locations_plot(CSV_PATH, OUTPUT_PATH, classnames_for_map=['pedestrians',
     # add location data
     for classname in classnames_for_map:
         fig.add_trace(go.Bar(x=location_df['location_name'], y=location_df[classname], name=classname))
+    # aggregate forms of transport: active transport, motorised transport, public transport
+    # and add to bar graph
+    forms_of_transportation = {
+        "active": ["pedestrians", "cyclist", "dogwalker"],
+        "motorised": ["car_driver", "motorcyclist", "truck_driver"],
+        "public": ["bus_driver", "train_driver"]
+    }
+    for form_, value_ in forms_of_transportation.items():
+        # holds the final bin values for a given transportation form
+        form_counts_per_location = []
+        # holds the bin values for the individual modes per form
+        mode_bin_counts = []
+        for transportation_mode in value_:
+            transportation_mode_values = location_df[transportation_mode].values
+            mode_bin_counts.append(transportation_mode_values)
+        # calculate sum over all modes per form
+        for index in range(len(location_df['location_name'])):
+            added_bin_count = 0
+            for list_ in mode_bin_counts:
+                try:
+                    added_bin_count += list_[index]
+                except Exception as e:
+                    print()
+                    pass
+            form_counts_per_location.append(added_bin_count)
+        # add bar element to figure
+        fig.add_trace(go.Bar(x=location_df['location_name'], y=form_counts_per_location, name=f"{form_} transport"))
 
+    # adapt layout to a stacked bar chart
     fig.update_layout(
         xaxis_title="location names",
         yaxis_title="count",
@@ -212,6 +240,8 @@ def figure_plotting(total_objects_dict, total_modes_dict, location_names_df, vid
     # classnames considered for this plot
     classnames_for_figure = ['person', 'bicycle', 'car', 'motorcycle', 'bus', 'train', 'truck', 'pedestrians',
                               'dogwalker', 'cyclist', 'motorcyclist', 'car_driver', 'truck_driver', 'bus_driver', 'train_driver']
+    # store counts per classname and bin to later aggregate different forms of transport (active, motorised, public)
+    classnames_count_dict = defaultdict(lambda: {'counts_per_bin': []})
     # initialise figure
     fig = go.Figure()
     dicts_ = [total_objects_dict, total_modes_dict]
@@ -225,8 +255,9 @@ def figure_plotting(total_objects_dict, total_modes_dict, location_names_df, vid
                     max_frame = int(frames[-1])
     # get all frames for the given object or transportation mode
     frames_per_bin = round(max_frame / bins_per_video)
-    # delimiters between bins
+    # delimiters between bins and add max frame at the end
     real_bins = [frames_per_bin * bin_ for bin_ in range(1, bins_per_video)]
+    real_bins.append(max_frame)
     # position where plotted on x-axis
     x_bins = [(frames_per_bin / 2) + (frames_per_bin * bin_) for bin_ in range(bins_per_video)]
     # iterate over all input, add traces for each object, mode and add locations to x-axis
@@ -244,12 +275,38 @@ def figure_plotting(total_objects_dict, total_modes_dict, location_names_df, vid
                             count_aggregate += value_['count']
                             processed_frames.append(frame)
                     counts_per_bin.append(count_aggregate)
+                # add to result dict
+                classnames_count_dict[key_]['counts_per_bin'] = counts_per_bin
                 # add trace to figure
                 if max(counts_per_bin) > 0:
                     fig.add_trace(go.Bar(x=x_bins, y=counts_per_bin, name=key_, width=frames_per_bin))
                 else:
                     # print(f'[*] class {key_} not in plot, count: {count_aggregate}')
                     pass
+    # aggregate forms of transport: active transport, motorised transport, public transport
+    # and add to bar graph
+    forms_of_transportation = {
+        "active": ["pedestrians", "cyclist", "dogwalker"],
+        "motorised": ["car_driver", "motorcyclist", "truck_driver"],
+        "public": ["bus_driver", "train_driver"]
+    }
+    for form_, value_ in forms_of_transportation.items():
+        # holds the final bin values for a given transportation form
+        form_counts_per_bin = []
+        # holds the bin values for the individual modes per form
+        mode_bin_counts = []
+        for transportation_mode in value_:
+            mode_bin_counts.append(classnames_count_dict[transportation_mode]['counts_per_bin'])
+        # calculate sum over all modes per form
+        for index in range(len(x_bins)):
+            added_bin_count = 0
+            for list_ in mode_bin_counts:
+                added_bin_count += list_[index]
+            form_counts_per_bin.append(added_bin_count)
+        # add bar element to figure
+        fig.add_trace(go.Bar(x=x_bins, y=form_counts_per_bin, name=f"{form_} transport", width=frames_per_bin))
+
+
     # sort df by frame_nr and location name
     location_names_df.sort_values(by=['frame_nr', 'location_name'], inplace=True)
     # keep track of processed location names and their frame_nr, only include multiple same location if their frames are far apart
