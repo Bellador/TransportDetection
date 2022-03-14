@@ -1,9 +1,8 @@
 import os
 import time
 import warnings
-
 import pandas as pd
-
+from itertools import product
 warnings.simplefilter(action='ignore', category=FutureWarning)
 # figure plotting
 import plotly.graph_objs as go
@@ -14,11 +13,85 @@ import contextily as ctx
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from statsmodels.graphics.mosaicplot import mosaic
 
-
-def all_locations_plot(CSV_PATH, OUTPUT_PATH, classnames_for_map=['pedestrians', 'cyclist', 'car_driver']):
+def mosaic_plot_locations(CSV_PATH, OUTPUT_PATH, forms_of_transportation):
     '''
-    think about how mutliple location entries shall be treated
+    relative plot of transportation forms across all locations, easily comperable
+    '''
+    location_df = pd.read_csv(CSV_PATH, delimiter=';')
+    # unique names frop by location is only one way to deal with the data - analysing difference instances of the same location
+    # could also be extremely interesting from an analysis perspective
+    location_df.drop_duplicates(subset=['location_name'], inplace=True, ignore_index=True)
+    # aggregate forms of transport: active transport, motorised transport, public transport
+    # and add to bar graph
+    # stores the forms of transportation per location
+    data = {}
+    plot_data = {}
+
+    for form_, value_ in forms_of_transportation.items():
+        # holds the final bin values for a given transportation form
+        form_counts_per_location = []
+        # holds the bin values for the individual modes per form
+        mode_bin_counts = []
+        for transportation_mode in value_:
+            transportation_mode_values = location_df[transportation_mode].values
+            mode_bin_counts.append(transportation_mode_values)
+        # calculate sum over all modes per form
+        all_data_per_form = []
+        for index, row in location_df.iterrows():
+            added_bin_count = 0
+            for list_ in mode_bin_counts:
+                added_bin_count += list_[index]
+            form_counts_per_location.append(added_bin_count)
+
+            all_data_per_form.append(added_bin_count)
+            data[(row['location_name'], form_)] = added_bin_count
+        # add to plot_data
+        plot_data[form_] = all_data_per_form
+
+    def props(key):
+        return {'color': '#AB63FA' if 'active' in key else ('#19D3F3' if 'public' in key else '#FFA15A')}
+
+    def labelizer(key):
+        # return data[key]
+        return None
+
+    # create df from plot_data
+    plot_df = pd.DataFrame.from_dict(plot_data, orient='index', columns=location_df['location_name'])
+    plot_df = plot_df.T
+    # # sort data by highest active transportation values
+    # def sort_func(x):
+    #     form_ = x[0][1]
+    #     if form_ == 'active':
+    #         count = x[1]
+    #         return count
+    #     else:
+    #         return 0
+    # sort dictionary by highest share of active transportation
+    plot_df['active_share'] = plot_df.apply(lambda x: x['active'] / (x['active'] + x['motorised'] + x['public']), axis=1)
+    plot_df.sort_values(by=['active_share'], inplace=True)
+    ordered_locations = plot_df.index.values.tolist()
+    ordered_data = {}
+    for location in reversed(ordered_locations):
+        for form_ in ['active', 'motorised', 'public']:
+            for key, value in data.items():
+                unordered_location = key[0]
+                unordered_form = key[1]
+                if unordered_location == location and unordered_form == form_:
+                    ordered_data[key] = value
+    # data = {k: v for k, v in sorted(data.items(), key=lambda x: sort_func(x), reverse=True)}
+    # data = {k: v for k, v in sorted(data.items(), key=lambda x: x[0][0])}
+    # mosaic(plot_df_transposed, index=['active', 'motorised', 'public']) #, labelizer=labelizer
+    mosaic(ordered_data, labelizer=labelizer, properties=props, gap=0.015, label_rotation=[90, 0]) #, labelizer=labelizer
+    plt.show()
+    print('[+] saving mosaic plot')
+    OUTPUT_HTML = os.path.join(OUTPUT_PATH, 'location_statistics_plot.html')
+    # fig.write_html(OUTPUT_HTML)
+
+def all_locations_plot(CSV_PATH, OUTPUT_PATH, forms_of_transportation):
+    '''
+    think about how multiple location entries shall be treated
 
     '''
     location_df = pd.read_csv(CSV_PATH, delimiter=';')
@@ -27,16 +100,22 @@ def all_locations_plot(CSV_PATH, OUTPUT_PATH, classnames_for_map=['pedestrians',
     location_df.drop_duplicates(subset=['location_name'], inplace=True)
     # initialise figure
     fig = go.Figure()
-    # add location data
-    for classname in classnames_for_map:
-        fig.add_trace(go.Bar(x=location_df['location_name'], y=location_df[classname], name=classname))
+    # # add location data
+    # for classname in classnames_for_map:
+    #     fig.add_trace(go.Bar(x=location_df['location_name'], y=location_df[classname], name=classname))
     # aggregate forms of transport: active transport, motorised transport, public transport
     # and add to bar graph
-    forms_of_transportation = {
-        "active": ["pedestrians", "cyclist", "dogwalker"],
-        "motorised": ["car_driver", "motorcyclist", "truck_driver"],
-        "public": ["bus_driver", "train_driver"]
+
+    colors = {
+        "active": "#AB63FA",
+        "motorised": "#FFA15A",
+        "public": "#19D3F3"
     }
+    # forms_of_transportation = {
+    #     "active": ["pedestrians", "cyclist", "dogwalker"],
+    #     "motorised": ["car_driver", "motorcyclist", "truck_driver"],
+    #     "public": ["bus_driver", "train_driver"]
+    # }
     for form_, value_ in forms_of_transportation.items():
         # holds the final bin values for a given transportation form
         form_counts_per_location = []
@@ -49,41 +128,41 @@ def all_locations_plot(CSV_PATH, OUTPUT_PATH, classnames_for_map=['pedestrians',
         for index in range(len(location_df['location_name'])):
             added_bin_count = 0
             for list_ in mode_bin_counts:
-                try:
-                    added_bin_count += list_[index]
-                except Exception as e:
-                    print()
-                    pass
+                added_bin_count += list_[index]
             form_counts_per_location.append(added_bin_count)
         # add bar element to figure
-        fig.add_trace(go.Bar(x=location_df['location_name'], y=form_counts_per_location, name=f"{form_} transport"))
+        fig.add_trace(go.Bar(x=location_df['location_name'], y=form_counts_per_location, name=f"{form_} transport", marker_color=colors[form_]))
 
     # adapt layout to a stacked bar chart
     fig.update_layout(
         xaxis_title="location names",
         yaxis_title="count",
-        barmode='stack'
+        barmode='stack',
+        xaxis={'categoryorder': 'total descending'}
     )
-    # fig.show()
+    fig.show()
     print('[+] saving all locations figure as interactive HTML plot')
     OUTPUT_HTML = os.path.join(OUTPUT_PATH, 'location_statistics_plot.html')
     fig.write_html(OUTPUT_HTML)
 
-def output_location_statistics(total_objects_dict, total_modes_dict, location_names_df, VIDEOS_STORE_PATH, frame_buffer=5000):
+def output_location_statistics(total_objects_dict, total_modes_dict, unique_location_names_df, VIDEOS_STORE_PATH, frame_buffer=2500):
     '''
     create location statistics in CSV output across all videos
     this includes the found objects, and transportation modes across videos around detected locations
     based on a defined frame_buffer +/- of the frame where the location was found.
     '''
     dicts_ = [total_objects_dict, total_modes_dict]
-    classnames_to_output = "airplane;backpack;bench;bicycle;bird;boat_driver;bus;bus_driver;car;car_driver;chair;clock;cyclist;dogwalker;handbag;motorcycle;motorcyclist;pedestrians;person;potted plant;refrigerator;skateboard;suitcase;traffic light;train_driver;truck;truck_driver".split(';')
-    data_dict = defaultdict(lambda: {'frame_nr': None, 'classnames': defaultdict(dict)})
-    # create unique location names df
-    unique_location_names_df = location_names_df.drop_duplicates(subset=['location_name'])
+    classnames_to_output = "airplane;backpack;bench;bicycle;bird;boat;boat_driver;bus;bus_driver;car;car_driver;chair;clock;cyclist;dogwalker;handbag;motorcycle;motorcyclist;pedestrians;person;potted plant;refrigerator;skateboard;suitcase;traffic light;train;train_driver;truck;truck_driver".split(';')
+    data_dict = defaultdict(lambda: {'frame_nr': None, 'lat': None, 'lng': None, 'classnames': defaultdict(dict)})
+    # add lat, lng to dataframe as separate columns
+    unique_location_names_df['lat'] = unique_location_names_df.apply(lambda x: x['geo'].centroid.coords[0][1], axis=1)
+    unique_location_names_df['lng'] = unique_location_names_df.apply(lambda x: x['geo'].centroid.coords[0][0], axis=1)
     # iterate over all input, add traces for each object, mode and add locations to x-axis
     for row_index, row in unique_location_names_df.iterrows():
         location_name = row['location_name']
         location_frame_nr = int(row['frame_nr'])
+        location_lng = row['lng']
+        location_lat = row['lat']
         # defining frame buffer boundaries, in which modes and objects are counted and attributed to the location
         upper_frame_limit = location_frame_nr + int((frame_buffer / 2))
         lower_frame_limit = location_frame_nr - int((frame_buffer / 2))
@@ -99,6 +178,8 @@ def output_location_statistics(total_objects_dict, total_modes_dict, location_na
                         processed_frames.append(frame)
                 data_dict[location_name]['classnames'][classname] = counts_in_frame_buffer
         data_dict[location_name]['frame_nr'] = location_frame_nr
+        data_dict[location_name]['lat'] = location_lat
+        data_dict[location_name]['lng'] = location_lng
 
     # write/append to CSV
     delimiter = ';'
@@ -112,7 +193,7 @@ def output_location_statistics(total_objects_dict, total_modes_dict, location_na
         print(f'[!] locations statistics file NOT there')
         # create header for CSV
         base_string = f'{delimiter}'.join([classname for classname in classnames_to_output])
-        header = f'location_name{delimiter}frame_nr{delimiter}' + base_string
+        header = f'location_name{delimiter}lng{delimiter}lat{delimiter}frame_nr{delimiter}' + base_string
         # newly create CSV and write header
         with open(CSV_LOCATION_STATISTCS_OUTPUT_PATH, 'wt', encoding='utf-8') as f:
             f.write(f'{header}\n')
@@ -121,7 +202,7 @@ def output_location_statistics(total_objects_dict, total_modes_dict, location_na
     # append the location statistics from the current video to the output CSV
     with open(CSV_LOCATION_STATISTCS_OUTPUT_PATH, 'at', encoding='utf-8') as f:
         for location_name, value in data_dict.items():
-            csv_location_line = f'{location_name}{delimiter}{value["frame_nr"]}'
+            csv_location_line = f'{location_name}{delimiter}{value["lng"]}{delimiter}{value["lat"]}{delimiter}{value["frame_nr"]}'
             # to make sure it is the right order and missing key values are denoted with 0
             for classname in classnames_to_output:
                 if classname in value['classnames']:
@@ -150,7 +231,7 @@ def build_bar(mapx, mapy, ax, width, xvals=['a','b','c'], yvals=[1,4,2], fcolors
     ax_h.axis('off')
     return ax_h
 
-def map_plotting(total_objects_dict, total_modes_dict, location_names_df, VIDEO_FOLDER_PATH, video_name, frame_buffer=5000):
+def map_plotting(total_objects_dict, total_modes_dict, location_names_df, VIDEO_FOLDER_PATH, video_name, frame_buffer=2500):
     # count transportation modes and objects in a given buffer around detected locations, for location specific statistics
     # classnames considered for the map for function map_plotting
     classnames_for_map = ['pedestrians', 'cyclist', 'car_driver']
@@ -235,6 +316,7 @@ def map_plotting(total_objects_dict, total_modes_dict, location_names_df, VIDEO_
     fig_filepath = os.path.join(VIDEO_FOLDER_PATH, fig_filename)
     plt.savefig(fig_filepath)
     # plt.show()
+    return unique_location_names_df
 
 def figure_plotting(total_objects_dict, total_modes_dict, location_names_df, video_folder_path, video_name, bins_per_video = 20):
     # classnames considered for this plot
