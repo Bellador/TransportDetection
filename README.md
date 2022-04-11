@@ -56,7 +56,7 @@ To run the  `workflow.py` complete the folling steps:
 
 ## Presentation slides
 
-GISRUK 2022 short presentation slides can be found under `./related_documents/marp_presentation.html` (to be added)
+GISRUK 2022 short presentation slides can be found under `./related_documents/markdown_presentation_FINAL/marp_presentation.html`
 
 
 ## Future Work
