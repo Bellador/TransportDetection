@@ -4,35 +4,34 @@ import sys
 sys.path.insert(0, './yolov5')
 # general utils
 import os
-import csv
 # fixes error: OMP: Error #15: Initializing libiomp5md.dll, but found libiomp5md.dll already initialized.
 # https://stackoverflow.com/questions/20554074/sklearn-omp-error-15-when-fitting-models
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 import time
-import shutil
-import argparse
-import platform
-from pathlib import Path
 # Deep nets
 import cv2
 import torch
 import torch.backends.cudnn as cudnn
 from yolov5.models.experimental import attempt_load
-from yolov5.utils.google_utils import attempt_download
-from yolov5.utils.datasets import LoadImages, LoadStreams
-from yolov5.utils.torch_utils import select_device, time_synchronized
-from yolov5.utils.general import check_img_size, non_max_suppression, scale_coords, check_imshow
+# from yolov5.utils.google_utils import attempt_download # before update
+from yolov5.utils.downloads import attempt_download # after update
+# from yolov5.utils.datasets import LoadImages, LoadStreams # before update
+from yolov5.utils.dataloaders import LoadImages, LoadStreams # after update
+# from yolov5.utils.torch_utils import select_device, time_synchronized # before update
+from yolov5.utils.torch_utils import select_device, time_sync # after update
+# from yolov5.utils.general import check_img_size, non_max_suppression, scale_coords, check_imshow # before update
+from yolov5.utils.general import check_img_size, non_max_suppression, scale_boxes, check_imshow # after update
 from deep_sort_pytorch.deep_sort import DeepSort
 from deep_sort_pytorch.utils.parser import get_config
 # Object Character Recognition (OCR)
 import easyocr
 
-csv.field_size_limit(sys.maxsize)
+# csv.field_size_limit(sys.maxsize)
 
 palette = (2 ** 11 - 1, 2 ** 15 - 1, 2 ** 20 - 1)
 
 def xyxy_to_xywh(*xyxy):
-    """" Calculates the relative bounding box from absolute pixel values. """
+    """"Calculates the relative bounding box from absolute pixel values."""
     bbox_left = min([xyxy[0].item(), xyxy[2].item()])
     bbox_top = min([xyxy[1].item(), xyxy[3].item()])
     bbox_w = abs(xyxy[0].item() - xyxy[2].item())
@@ -81,15 +80,47 @@ def draw_boxes(img, bbox, identities=None, offset=(0, 0)):
                                  t_size[1] + 4), cv2.FONT_HERSHEY_PLAIN, 2, [255, 255, 255], 2)
     return img
 
-def detect(opt):
-    out, source, yolo_weights, deep_sort_weights, show_vid, save_vid, save_txt, imgsz, evaluate, OCR_SKIP_NTH_FRAME, OUTPUT_VIDEO_PATH, TRACKLOG_PATH, OCR_LOG_PATH = \
-        opt.output, opt.source, opt.yolo_weights, opt.deep_sort_weights, opt.show_vid, opt.save_vid, \
-            opt.save_txt, opt.img_size, opt.evaluate, opt.ocr_skip_nth_frame, opt.output_video_path, opt.track_log, opt.ocr_log
+def detect(**kwargs):
+    '''
+    :param yolo_weights: model.pt path
+    :param deep_sort_weights: ckpt.t7 path
+    :param conf_thres: object confidence threshold
+    :param iou_thres: IOU threshold for NMS
+    :param fourcc: output video codec (verify ffmpeg support)
+    :param device: cuda device, i.e. 0 or 0,1,2,3 or cpu
+    :param augment: augmented inference
+    :param agnostic_nms: class-agnostic NMS
+    :param config_deepsort: 
+    :param kwargs: 
+    :return: 
+    '''
+
+    video_name = kwargs['video_name']
+    source = kwargs['source']
+    device = kwargs['device']
+    yolo_weights = kwargs['yolo_weights']
+    deep_sort_weights = kwargs['deep_sort_weights']
+    config_deepsort = kwargs['config_deepsort']
+    show_vid = kwargs['show_vid']
+    save_vid = kwargs['save_vid']
+    save_txt = kwargs['save_txt']
+    imgsz = kwargs['img_size']
+    conf_thres = kwargs['conf_thres']
+    iou_thres = kwargs['iou_thres']
+    agnostic_nms = kwargs['agnostic_nms']
+    augment = kwargs['augment']
+    classes = kwargs['classes']
+    OCR_PER_SEC = kwargs['ocr_per_sec']
+    OUTPUT_VIDEO_PATH = kwargs['output_video_path']
+    TRACKLOG_PATH = kwargs['track_log']
+    OCR_LOG_PATH = kwargs['ocr_log']
+    VIDEOS_METADATA_LOG = kwargs['videos_metadata_log']
+
     webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
 
     # initialize deepsort
     cfg = get_config()
-    cfg.merge_from_file(opt.config_deepsort)
+    cfg.merge_from_file(config_deepsort)
     attempt_download(deep_sort_weights, repo='mikel-brostrom/Yolov5_DeepSort_Pytorch')
     deepsort = DeepSort(cfg.DEEPSORT.REID_CKPT,
                         max_dist=cfg.DEEPSORT.MAX_DIST, min_confidence=cfg.DEEPSORT.MIN_CONFIDENCE,
@@ -97,26 +128,28 @@ def detect(opt):
                         max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
                         use_cuda=True)
     # Initialize
-    device = select_device(opt.device)
-    # The MOT16 evaluation runs multiple inference streams in parallel, each one writing to
-    # its own .txt file. Hence, in that case, the output folder is not restored
-    if not evaluate:
-        if os.path.exists(out):
-            shutil.rmtree(out)  # delete output folder
-        os.makedirs(out)  # make new output folder
+    device = select_device(device)
+    # list to store images that are written to video file
+    video_img_storage = []
+    ## The MOT16 evaluation runs multiple inference streams in parallel, each one writing to
+    ## its own .txt file. Hence, in that case, the output folder is not restored
+    # if not evaluate:
+    #     if os.path.exists(out):
+    #         shutil.rmtree(out)  # delete output folder
+    #     os.makedirs(out)  # make new output folder
     half = device.type != 'cpu'  # half precision only supported on CUDA
     # Load model
-    model = attempt_load(yolo_weights, map_location=device)  # load FP32 model
+    # model = attempt_load(yolo_weights, map_location=device)  # load FP32 model # before update
+    model = attempt_load(yolo_weights, device=device)  # load FP32 model # after update
     stride = int(model.stride.max())  # model stride
     imgsz = check_img_size(imgsz, s=stride)  # check img_size
     names = model.module.names if hasattr(model, 'module') else model.names  # get class names and colors
     if half:
         model.half()  # to FP16
-    # Set Dataloader
-    vid_path, vid_writer = None, None
+
     # Check if environment supports image displays
     if show_vid:
-        show_vid = check_imshow()
+        show_vid = check_imshow(warn=True)
     if webcam:
         cudnn.benchmark = True  # set True to speed up constant image size inference
         dataset = LoadStreams(source, img_size=imgsz, stride=stride)
@@ -129,62 +162,88 @@ def detect(opt):
     # NEW initialise easyocr + logging
     ocr_reader = easyocr.Reader(['fr', 'en', 'de'], gpu=True)  # need to run only once to load model into memory
 
-    for frame_idx, (path, img, im0s, vid_cap) in enumerate(dataset):
+    fps = None
+    width = None
+    height = None
+    for frame_idx, (path, img, im0s, vid_cap, vid_cap_str) in enumerate(dataset):
+        if frame_idx == 0:
+            fps = int(vid_cap.get(cv2.CAP_PROP_FPS))
+            width = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            # calculate based on OCR_PER_SEC the frame interval of OCR processing
+            OCR_NTH_FRAME = round(fps / OCR_PER_SEC)
+            # write video specific metadata to file
+            delimiter = ';'
+            with open(VIDEOS_METADATA_LOG, 'at', encoding='utf-8') as f:
+                f.write(f'{video_name}{delimiter}{fps}{delimiter}{width}{delimiter}{height}{delimiter}{OCR_NTH_FRAME}\n')
+
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
         if img.ndimension() == 3:
             img = img.unsqueeze(0)
         # Inference
-        t1 = time_synchronized()
-        pred = model(img, augment=opt.augment)[0]
+        # t1 = time_synchronized() # before update
+        t1 = time_sync() # after update
+        pred = model(img, augment=augment)[0]
 
         # NEW apply OCR to frame and save detected text in OCR_logfile
-        # im0s must be taken as input or the plain image path variable 'path' but this is not feasable with videos
+        # im0s must be taken as input or the plain image path variable 'path' but this is not feasible with videos
         # reason not exactly known, why for instance variable img does not work - probably preprocessing
         # does not work for WEBCAM!
         # --- img_for_ocr = np.array(im0s) -- not necessary
+
         img_for_ocr = im0s
+        ## rescale image to only include the top half of the image (higher probability of street names) to improve performance (tested by saving image before after - functional!)
+        # torchvision.transforms.ToPILImage()(img_for_ocr).save('img_before.png')
+        # fetching the dimensions
+        height, width, depth = img_for_ocr.shape
+        # keep only top half of image
+        img_for_ocr = img_for_ocr.reshape(height, width, depth)
+        img_for_ocr = img_for_ocr[:int(height/2),:,:]
+        # torchvision.transforms.ToPILImage()(img_for_ocr).save('img_after.png')
         # check if OCR shall be performed on the current frame
-        if int(frame_idx) % int(OCR_SKIP_NTH_FRAME) == 0:
-            ocr_result = ocr_reader.readtext(img_for_ocr, detail=1)
-            if len(ocr_result) != 0:
-                with open(OCR_LOG_PATH, 'a', encoding='utf-8') as f:
-                    for result in ocr_result:
-                        bbox = result[0]
-                        bbox_bl = bbox[0]
-                        bbox_tr = bbox[2]
-                        bbox_xmin = bbox_bl[0]
-                        bbox_ymin = bbox_bl[1]
-                        bbox_xmax = bbox_tr[0]
-                        bbox_ymax = bbox_tr[1]
-                        text = result[1].replace(';', ' ') # replaces all csv separator's in text!
-                        certainty = result[2]
-                        # here potentially set certainty threshold!!
-                        ocr_entry = '{};{};{};{};{};{};{}\n'.format(frame_idx, text, certainty, bbox_xmin, bbox_ymin, bbox_xmax, bbox_ymax)
-                        f.write(ocr_entry)
+
+        # if int(frame_idx) % int(OCR_NTH_FRAME) == 0:
+        #     ocr_result = ocr_reader.readtext(img_for_ocr, detail=1)
+        #     if len(ocr_result) != 0:
+        #         with open(OCR_LOG_PATH, 'a', encoding='utf-8') as f:
+        #             for result in ocr_result:
+        #                 bbox = result[0]
+        #                 bbox_bl = bbox[0]
+        #                 bbox_tr = bbox[2]
+        #                 bbox_xmin = bbox_bl[0]
+        #                 bbox_ymin = bbox_bl[1]
+        #                 bbox_xmax = bbox_tr[0]
+        #                 bbox_ymax = bbox_tr[1]
+        #                 text = result[1].replace(';', ' ') # replaces all csv separator's in text!
+        #                 certainty = result[2]
+        #                 # here potentially set certainty threshold!!
+        #                 ocr_entry = '{};{};{};{};{};{};{}\n'.format(frame_idx, text, certainty, bbox_xmin, bbox_ymin, bbox_xmax, bbox_ymax)
+        #                 f.write(ocr_entry)
         # apply NMS
-        pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
-        t2 = time_synchronized()
+        pred = non_max_suppression(pred, conf_thres, iou_thres, classes=classes, agnostic=agnostic_nms)
+        # t2 = time_synchronized() # before update
+        t2 = time_sync() # after update
         # Process detections
         for i, det in enumerate(pred):  # detections per image
             if webcam:  # batch_size >= 1
-                p, s, im0 = path[i], '%g: ' % i, im0s[i].copy()
+                p, print_string, im0 = path[i], '%g: ' % i, im0s[i].copy()
             else:
-                p, s, im0 = path, '', im0s
+                p, print_string, im0 = path, '', im0s
 
-            s += '%gx%g ' % img.shape[2:]  # print string
-            save_path = str(Path(out) / Path(p).name)
+            print_string += '%gx%g ' % img.shape[2:]  # print string
+            # save_path = str(Path(out) / Path(p).name)
 
             if det is not None and len(det):
                 # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_coords(
-                    img.shape[2:], det[:, :4], im0.shape).round()
+                # det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round() # before update
+                det[:, :4] = scale_boxes(img.shape[2:], det[:, :4], im0.shape).round() # after update
                 # Print results
                 for c in det[:, -1].unique():
                     n = (det[:, -1] == c).sum()  # detections per class
-                    s += '%g %ss, ' % (n, names[int(c)])  # add to string
-                # just again for getting all class_names (without removing dublicates)
+                    print_string += '%g %ss, ' % (n, names[int(c)])  # add to string
+                # just again for getting all class_names (without removing duplicates)
                 class_names = []
                 for c in det[:, -1]:
                     class_names.append(int(c))
@@ -212,7 +271,7 @@ def detect(opt):
                     # to MOT format
                     tlwh_bboxs = xyxy_to_tlwh(bbox_xyxy)
                     # Write MOT compliant results to file
-                    if True: #save_txt
+                    if save_txt:
                         for j, (tlwh_bbox, output) in enumerate(zip(tlwh_bboxs, outputs)):
                             bbox_top = tlwh_bbox[0]
                             bbox_left = tlwh_bbox[1]
@@ -225,33 +284,29 @@ def detect(opt):
             else:
                 deepsort.increment_ages()
             # print time (inference + NMS)
-            print('%sDone. (%.3fs)' % (s, t2 - t1))
+            # add frame info to print_string
+            print_string = vid_cap_str + ' ' + print_string
+            print(f'{print_string}Done. {round(t2 - t1, 2)}', end='\r')
             # stream results
             if show_vid:
                 cv2.imshow(p, im0)
                 if cv2.waitKey(1) == ord('q'):  # q to quit
                     raise StopIteration
-            # save results (video with detections)
-            if save_vid:
-                # if vid_path != save_path:  # new video
-                #     vid_path = save_path
-                if isinstance(vid_writer, cv2.VideoWriter):
-                    vid_writer.release()  # release previous video writer
-                if vid_cap:  # video
-                    fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                    w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                    h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                else:  # stream
-                    fps, w, h = 30, im0.shape[1], im0.shape[0]
-                    save_path += '.mp4'
 
-                vid_writer = cv2.VideoWriter(OUTPUT_VIDEO_PATH, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-            vid_writer.write(im0)
+        # save results (video with detections) to a list and write to video file later
+        if save_vid:
+            video_img_storage.append(im0)
 
-    if save_txt or save_vid:
-        print('Results saved to %s' % os.getcwd() + os.sep + out)
-        if platform == 'darwin':  # MacOS
-            os.system('open ' + save_path)
+    if save_vid:
+        vid_writer = cv2.VideoWriter(OUTPUT_VIDEO_PATH, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+        for frame_idx, img_file in enumerate(video_img_storage):
+            vid_writer.write(img_file)
+            print(f'frame_idx: {frame_idx} ,fps: {fps}, height: {height}, width: {width}', end='\r')
+
+    # if save_txt or save_vid:
+    #     print('[+] Results saved to %s' % os.getcwd() + os.sep + out)
+    #     if platform == 'darwin':  # MacOS
+    #         os.system('open ' + save_path)
 
     # # NEW: copy existing output to persistent ./output folder
     # for file in os.listdir(out):
@@ -259,38 +314,3 @@ def detect(opt):
 
     print('[*] Done. (%.3fs)' % (time.time() - t0))
 
-
-if __name__ == '__main__':
-    # turn off CUDA (GPU) for inference.
-    # the way it is implemented now, CUDA is loaded for every new worker which makes the overhead enormous.
-    # running on CPU allows to raise the number of workers by a significant amount that presumably outways running on GPU
-    # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--yolo_weights', type=str, default='yolov5/weights/yolov5s.pt', help='model.pt path')
-    parser.add_argument('--deep_sort_weights', type=str, default='deep_sort_pytorch/deep_sort/deep/checkpoint/ckpt.t7', help='ckpt.t7 path')
-    # file/folder, 0 for webcam
-    parser.add_argument('--source', type=str, default=0, help='source')
-    parser.add_argument('--output', type=str, default='inference/tmp_output', help='output folder')  # output folder
-    parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
-    parser.add_argument('--conf-thres', type=float, default=0.4, help='object confidence threshold')
-    parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
-    parser.add_argument('--fourcc', type=str, default='mp4v', help='output video codec (verify ffmpeg support)')
-    parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    parser.add_argument('--show-vid', action='store_true', help='display tracking video results')
-    parser.add_argument('--save-vid', action='store_true', help='save video tracking results')
-    parser.add_argument('--save-txt', action='store_true', help='save MOT compliant results to *.txt')
-    # class 0 is person, 1 is bycicle, 2 is car... 79 is oven
-    parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --class 0, or --class 16 17')
-    parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
-    parser.add_argument('--augment', action='store_true', help='augmented inference')
-    parser.add_argument('--evaluate', action='store_true', help='augmented inference')
-    parser.add_argument("--config_deepsort", type=str, default="deep_sort_pytorch/configs/deep_sort.yaml")
-    parser.add_argument("--ocr-skip-nth-frame", type=str)
-    parser.add_argument("--output-video-path", type=str)
-    parser.add_argument("--track-log", type=str)
-    parser.add_argument("--ocr-log", type=str)
-    args = parser.parse_args()
-    args.img_size = check_img_size(args.img_size)
-
-    with torch.no_grad():
-        detect(args)

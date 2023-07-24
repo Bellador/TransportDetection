@@ -1,73 +1,67 @@
-# Project to detect transportation modes in video footage
+# Transport Mode Detection Pipeline in Videos
 
 ## Into
 
-This work investigates the potential of analysing user-generated street view imagery from videos to extract transportation modes, for example whether individuals are walking or cycling, using deep neural-networks. It addresses existing data gaps with respect to monitoring the sustainability of the mix of transport modes in cities, and complements existing methods based on stationary count stations or Google Street View. Preliminary results show the potential of the proposed workflow to automatically extract forms of transportation from videos as alternative data form.
+This repository holds a full fledged pipeline to analyse collections of videos to obtain spatio-temporal transport mode statistics. Videos of interest for this project contain user-generated street view imagery. Our project in the field of Urban Analytics aims to explore mobility patterns and estimate the sustainability of the transport mix in a city over space and time by detecting varying forms of active (pedestrians, cyclists), motorised (cars, trucks) and public (trams, trains, busses) transportation. By using alternative data sources we try to complement existing e.g stationary count station data or Google Street View imagery to fill in existing data gaps. 
+
 
 ## Workflow
 
 ![workflow](workflow.png)
 
-The workflow uses object detection [YOLOv5](https://github.com/mikel-brostrom/Yolov5_DeepSort_Pytorch/) and object tracking [DeepSort](https://github.com/nwojke/deep_sort) to identify transportation mode relevant objects and track anc count them across frames. Relations of relevant objects are used to infer transportation modes, such as a person in a certain relation to a bicycle suspects a cyclist. --> :bicyclist: = :walking: + :bike:
+The workflow is separated into two distinct parts.
+The first part deals with the transport relevant objects. Therein the objects (e.g. people and bikes) are detected ([YOLOv5](https://github.com/mikel-brostrom/Yolov5_DeepSort_Pytorch/)) and tracked ([DeepSort](https://github.com/nwojke/deep_sort)) across frames. Subsequently, transport modes are derived based on the spatial inter-frame relation of said objects.
 
-![visual](ugc_video_tracked_w_streetname.png)
+:bicyclist: = :walking: + :bike:
 
-### Geolocation
+The second part deals with context information around the detected modes of transport. Attributing a location to certain video segments - so called geolocation - allows spatial linkage. This was achieved twofold. Firstly, the video frames were scanned for street names through Optical Character Recognition (OCR) ([EasyOCR](https://pypi.org/project/easyocr/)) and secondly, manually added video timestamps by the author were scanned for mentions of specific locations. The textual video-metadata (title and description) are besides the timestamps also scanned for mentions about weather conditions (e.g. sunny/rainy) and concrete time references of the recording.
 
-Additionally to the transportation mode detection the workflow also perfroms text recognition which is referred to as Object Character Recognition (OCR) in Computer Vision terms. The extracted text is filtered for potential street names which are matched with the [Levenshtein Distance](https://towardsdatascience.com/calculating-string-similarity-in-python-276e18a7d33a) (word similarity) algorithm against a compiled dataset of OpenStreetMap street names which functions as gazetteer. The OCR is perfromed through the library [EasyOCR](https://pypi.org/project/easyocr/).
-Ultimately, the workflow compiles all detected geolocations from a video in a map as output.
+For the pipeline to run autonomosly, it encompasses a Youtube Video Downloader ([PyTube](https://github.com/pytube/pytube) with a custom wrapper) and Youtube API module (YoutubeAPI-Query) to obtain all necessary data to run. 
 
-![map](map_example.png)
 
 ## Output
 
-The workflow generates a project folder for each video with the following output files:
+The workflow generates a project folder for each Youtube video query, that contains:
 
-- track log CSV of all object IDs and their respective object class across frames
+- Location summary CSV that holds all necessary information for each detected location - aggregated over all processed videos in a given project. Each location holds information on the detected transport modes, weather and date
+- Metadata video CSV that holds information on Frames Per Second (FPS), frame width and height for all videos
+- Folder `plots` that stores visualisations
+- Folder `yt_videos` that holds an individual folder for each processed video
+
+Each video folder contains:
+
+- Track log CSV of all object IDs and their respective object class across frames
 - OCR log CSV of all text strings extracted from all frames
-- classnames CSV, a statistical summary of all detected classnames
-- transportation mode CSV, a statistical summary of all detected transportation modes
-- video MP4, containing visual bounding boxes and object ids
+- Classnames CSV, a statistical summary of all detected classnames
+- Transportation mode CSV, a statistical summary of all detected transportation modes
+- Video MP4, containing visual bounding boxes and object ids of detections (only if `save_vid = True`)
 
 ### Plots and figures
-- map PNG, showing all detected geolocations from potential streetnames, each with a bargraph displaying transportation mode counts (see figure above)
-- interactive plot HTML for each video (1), showing the distribution of detected objects and locations over the entire video
-- interactive plot HTML, one for all videos (2), showing the detected object distribution for all locations from all videos
-
-![plots](example_plots.png)
-
-(respective examples can be found in `./example_plots`)
+all visualisation that are created by the workflow are stored in a dedicated folder `plots` found within the project folder.
+These include so far:
+- all locations ploted by min. frequency (stored in subfolder `temp_analysis_freq_n`) 
+- all locations ploted by active, motorised and public transportation counts
+- map with all locations
 
 
 ## Setup
 
-To run the  `workflow.py` complete the folling steps:
+To run the `workflow.py` complete the following steps:
 
-1. Create the necessary virtual environment with Ananaconda
-- `conda env create --file transport_env.yml`
-- `conda activate transport_env`
-2. Download video material (preferably as mp4), for YouTube one can use
+1. Create the necessary virtual environment (preferably Anaconda)
+- `conda env create --file ENV.yml`
+- `conda activate <ENV>`
 
-`git clone https://github.com/Bellador/YoutubeDownloader`
-
-3. Place videos in folder `input_videos`
+3. Change parameters under `<ADAPT PARAMETERS HERE>` in `workflow.py`
 4. Run `nohup python -u workflow.py > mylogfile.log &` 
 
-
-## Presentation slides
-
-GISRUK 2022 short presentation slides can be found under `./related_documents/markdown_presentation_FINAL/marp_presentation.html`
-
-
-## Future Work
-
-- Using sound-feeds of videos to infer traffic volumes based on the varying decibel levels
 
 
 ## External resources
 
-The workflow is based on object (1) detection and (2) tracking as well as (3) Optical Character Recognition (OCR). These resources were taken from:
+The workflow is based on external libraries for (1) object detection and (2) object tracking as well as for (3) Optical Character Recognition (OCR) and (4) video downloading. TThese resources were taken from:
 
 - (1) [YOLOv5](https://github.com/mikel-brostrom/Yolov5_DeepSort_Pytorch/)
 - (2) [DeepSort](https://github.com/nwojke/deep_sort)
 - (3) [EasyOCR](https://pypi.org/project/easyocr/)
+- (4) [PyTube](https://github.com/pytube/pytube)

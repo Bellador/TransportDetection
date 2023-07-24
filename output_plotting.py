@@ -2,10 +2,15 @@ import os
 import time
 import warnings
 import pandas as pd
-from itertools import product
+import numpy as np
+import geopandas as gpd
+from collections import Counter
 warnings.simplefilter(action='ignore', category=FutureWarning)
 # figure plotting
+from shapely import wkt
+import plotly.express as px
 import plotly.graph_objs as go
+from plotly.subplots import make_subplots
 from collections import defaultdict
 # map plotting
 import contextily as ctx
@@ -15,40 +20,61 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from statsmodels.graphics.mosaicplot import mosaic
 
-def mosaic_plot_locations(CSV_PATH, OUTPUT_PATH, forms_of_transportation):
-    '''
-    relative plot of transportation forms across all locations, easily comperable
-    '''
-    location_df = pd.read_csv(CSV_PATH, delimiter=';')
-    # unique names frop by location is only one way to deal with the data - analysing difference instances of the same location
-    # could also be extremely interesting from an analysis perspective
-    location_df.drop_duplicates(subset=['location_name'], inplace=True, ignore_index=True)
-    # aggregate forms of transport: active transport, motorised transport, public transport
-    # and add to bar graph
-    # stores the forms of transportation per location
-    data = {}
-    plot_data = {}
+def all_locations_map(CSV_LOCATION_STATISTCS_OUTPUT_PATH):
+    # load df and convert to gdf
+    locations_df = pd.read_csv(CSV_LOCATION_STATISTCS_OUTPUT_PATH, sep=';')
+    # drop invalid geom rows before conversion to geodataframe
+    locations_df = locations_df.replace(to_replace='None', value=np.nan)
+    locations_df = locations_df[locations_df['geo'].notna()]
+    locations_df['geo'] = locations_df['geo'].apply(wkt.loads)
+    locations_gdf = gpd.GeoDataFrame(locations_df, crs='epsg:3857', geometry='geo')
+    # initialise figure
+    fig, ax = plt.subplots(figsize=(15, 14))
+    locations_gdf.plot(linewidth=2, color='red', ax=ax) #figsize=(20, 20),
+    # set spatial extend of axis based on detected features
+    feature_bounds = locations_gdf.geometry.total_bounds
+    x_span = feature_bounds[2] - feature_bounds[0]
+    y_span = feature_bounds[3] - feature_bounds[1]
+    xlim = ([(feature_bounds[0] - (x_span * 0.5)), (feature_bounds[2] + (x_span * 0.5))])
+    ylim = ([(feature_bounds[1] - (y_span * 0.5)), (feature_bounds[3] + (y_span * 0.5))])
+    # add map boundaries
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_axis_off()
+    # add basemap
+    ctx.add_basemap(ax, url=ctx.providers.OpenStreetMap.Mapnik)
+    plt.show()
 
-    for form_, value_ in forms_of_transportation.items():
-        # holds the final bin values for a given transportation form
-        form_counts_per_location = []
-        # holds the bin values for the individual modes per form
-        mode_bin_counts = []
-        for transportation_mode in value_:
-            transportation_mode_values = location_df[transportation_mode].values
-            mode_bin_counts.append(transportation_mode_values)
-        # calculate sum over all modes per form
-        all_data_per_form = []
-        for index, row in location_df.iterrows():
-            added_bin_count = 0
-            for list_ in mode_bin_counts:
-                added_bin_count += list_[index]
-            form_counts_per_location.append(added_bin_count)
+def mosaic_plot_locations(CSV_LOCATION_STATISTICS_OUTPUT_PATH, OUTPUT_PATH, forms_of_transportation, plot_locations='all'):
+    '''
+    relative plot of transportation forms across all locations, easily comparable
 
-            all_data_per_form.append(added_bin_count)
-            data[(row['location_name'], form_)] = added_bin_count
-        # add to plot_data
-        plot_data[form_] = all_data_per_form
+    plot_locations: If equals string 'all' all locations are plotted, otherwise it defines how many locations are plotted in total.
+    Included locations will be chosen after the dataframe was ordered and chosen in the given sequence
+    '''
+
+    storage_ = {}
+    location_df = pd.read_csv(CSV_LOCATION_STATISTICS_OUTPUT_PATH, delimiter=';')
+
+    for transport_form, class_names in forms_of_transportation.items():
+        for location_name in location_df.location_name.unique():
+            transport_form_counter = 0
+            for class_name in class_names:
+                transport_form_counter += location_df.loc[location_df.location_name == location_name, class_name].mean()
+            storage_[(location_name, transport_form)] = transport_form_counter
+
+    active_share_list = []
+    for location_name in location_df.location_name.unique():
+        active_share = storage_[(location_name, 'active')] / (storage_[(location_name, 'active')] + storage_[(location_name, 'public')] + storage_[(location_name, 'motorised')])
+        active_share_list.append((location_name, round(active_share, 2)))
+    # sort dictionary by highest share of active transportation
+    active_share_list_ordered = sorted(active_share_list, key=lambda x: x[1], reverse=True)
+    ordered_locations = [item[0] for item in active_share_list_ordered]
+    # sort storage based on highest active share locations
+    storage_sorted = {}
+    for location in ordered_locations:
+        for transport_form in ['active', 'motorised', 'public']:
+            storage_sorted[(location, transport_form)] = storage_[(location, transport_form)]
 
     def props(key):
         return {'color': '#AB63FA' if 'active' in key else ('#19D3F3' if 'public' in key else '#FFA15A')}
@@ -57,81 +83,42 @@ def mosaic_plot_locations(CSV_PATH, OUTPUT_PATH, forms_of_transportation):
         # return data[key]
         return None
 
-    # create df from plot_data
-    plot_df = pd.DataFrame.from_dict(plot_data, orient='index', columns=location_df['location_name'])
-    plot_df = plot_df.T
-    # # sort data by highest active transportation values
-    # def sort_func(x):
-    #     form_ = x[0][1]
-    #     if form_ == 'active':
-    #         count = x[1]
-    #         return count
-    #     else:
-    #         return 0
-    # sort dictionary by highest share of active transportation
-    plot_df['active_share'] = plot_df.apply(lambda x: x['active'] / (x['active'] + x['motorised'] + x['public']), axis=1)
-    plot_df.sort_values(by=['active_share'], inplace=True)
-    ordered_locations = plot_df.index.values.tolist()
-    ordered_data = {}
-    for location in reversed(ordered_locations):
-        for form_ in ['active', 'motorised', 'public']:
-            for key, value in data.items():
-                unordered_location = key[0]
-                unordered_form = key[1]
-                if unordered_location == location and unordered_form == form_:
-                    ordered_data[key] = value
-    # data = {k: v for k, v in sorted(data.items(), key=lambda x: sort_func(x), reverse=True)}
-    # data = {k: v for k, v in sorted(data.items(), key=lambda x: x[0][0])}
-    # mosaic(plot_df_transposed, index=['active', 'motorised', 'public']) #, labelizer=labelizer
-    mosaic(ordered_data, labelizer=labelizer, properties=props, gap=0.015, label_rotation=[90, 0]) #, labelizer=labelizer
-    plt.show()
+    fig, ax = plt.subplots()
+    fig.set_figheight(100)
+    fig.set_figwidth(100)
+    mosaic(storage_sorted, labelizer=labelizer, properties=props, gap=0.015, label_rotation=[90, 0], ax=ax) #, labelizer=labelizer
+    ax.tick_params(axis='x', which='major', labelsize=15)
+    ax.tick_params(axis='y', which='major', labelsize=20)
+    # plt.show()
     print('[+] saving mosaic plot')
-    OUTPUT_HTML = os.path.join(OUTPUT_PATH, 'location_statistics_plot.html')
-    # fig.write_html(OUTPUT_HTML)
+    OUTPUT_FILEPATH = os.path.join(OUTPUT_PATH, 'location_mosaic_plot.png')
+    fig.savefig(OUTPUT_FILEPATH)
 
-def all_locations_plot(CSV_PATH, OUTPUT_PATH, forms_of_transportation):
+def all_locations_plot(CSV_LOCATION_STATISTICS_OUTPUT_PATH, PLOTS_PATH, forms_of_transportation):
     '''
-    think about how multiple location entries shall be treated
+    creates a bar plot of all locations while aggregating the averaged, detected transportation modes by transportation form:
+    active, public and motorsied
+    '''
 
-    '''
-    location_df = pd.read_csv(CSV_PATH, delimiter=';')
-    # unique names frop by location is only one way to deal with the data - analysing difference instances of the same location
-    # could also be extremely interesting from an analysis perspective
-    location_df.drop_duplicates(subset=['location_name'], inplace=True)
+    storage_ = defaultdict(dict)
+    location_df = pd.read_csv(CSV_LOCATION_STATISTICS_OUTPUT_PATH, delimiter=';')
     # initialise figure
     fig = go.Figure()
-    # # add location data
-    # for classname in classnames_for_map:
-    #     fig.add_trace(go.Bar(x=location_df['location_name'], y=location_df[classname], name=classname))
-    # aggregate forms of transport: active transport, motorised transport, public transport
-    # and add to bar graph
-
     colors = {
         "active": "#AB63FA",
         "motorised": "#FFA15A",
         "public": "#19D3F3"
     }
-    # forms_of_transportation = {
-    #     "active": ["pedestrians", "cyclist", "dogwalker"],
-    #     "motorised": ["car_driver", "motorcyclist", "truck_driver"],
-    #     "public": ["bus_driver", "train_driver"]
-    # }
-    for form_, value_ in forms_of_transportation.items():
-        # holds the final bin values for a given transportation form
-        form_counts_per_location = []
-        # holds the bin values for the individual modes per form
-        mode_bin_counts = []
-        for transportation_mode in value_:
-            transportation_mode_values = location_df[transportation_mode].values
-            mode_bin_counts.append(transportation_mode_values)
-        # calculate sum over all modes per form
-        for index in range(len(location_df['location_name'])):
-            added_bin_count = 0
-            for list_ in mode_bin_counts:
-                added_bin_count += list_[index]
-            form_counts_per_location.append(added_bin_count)
+
+    for transport_form in forms_of_transportation.keys():
+        for location_name in location_df.location_name.unique():
+            transport_form_counter = round(location_df.loc[location_df.location_name == location_name, transport_form].mean(), 2)
+            storage_[location_name][transport_form] = transport_form_counter
         # add bar element to figure
-        fig.add_trace(go.Bar(x=location_df['location_name'], y=form_counts_per_location, name=f"{form_} transport", marker_color=colors[form_]))
+        fig.add_trace(go.Bar(x=list(storage_.keys()),
+                             y=[v[transport_form] for k, v in storage_.items()],
+                             name=f"{transport_form} transport",
+                             marker_color=colors[transport_form]))
 
     # adapt layout to a stacked bar chart
     fig.update_layout(
@@ -140,79 +127,81 @@ def all_locations_plot(CSV_PATH, OUTPUT_PATH, forms_of_transportation):
         barmode='stack',
         xaxis={'categoryorder': 'total descending'}
     )
-    fig.show()
+    # fig.show()
     print('[+] saving all locations figure as interactive HTML plot')
-    OUTPUT_HTML = os.path.join(OUTPUT_PATH, 'location_statistics_plot.html')
-    fig.write_html(OUTPUT_HTML)
+    PLOTS_FILEPATH = os.path.join(PLOTS_PATH, 'location_statistics_plot.html')
+    fig.write_html(PLOTS_FILEPATH)
 
-def output_location_statistics(total_objects_dict, total_modes_dict, unique_location_names_df, VIDEOS_STORE_PATH, frame_buffer=2500):
+def output_location_statistics(total_objects_dict, total_modes_dict, relevant_location_names_df, CSV_LOCATION_STATISTCS_OUTPUT_PATH, SEC_BUFFER=30):
     '''
-    create location statistics in CSV output across all videos
-    this includes the found objects, and transportation modes across videos around detected locations
-    based on a defined frame_buffer +/- of the frame where the location was found.
+    create location statistics in CSV output across all videos, will be called for each video iteratively
+    creates new output file if not existent, and appends otherwise.
+    file includes the found objects, and transportation modes across videos around detected locations
+    based on a defined buffer around the detected location.
+    Thereby, between two location types is differentiated which have their individual buffers (fps dependent!):
+    (1) Locations extracted from OCR detected street names -> sec_buffer +/- the location of detection
+    (2) Locations extracted from video timestamps  -> 2x sec_buffer after the location (since video authors highlight the start of location)
     '''
-    dicts_ = [total_objects_dict, total_modes_dict]
-    classnames_to_output = "airplane;backpack;bench;bicycle;bird;boat;boat_driver;bus;bus_driver;car;car_driver;chair;clock;cyclist;dogwalker;handbag;motorcycle;motorcyclist;pedestrians;person;potted plant;refrigerator;skateboard;suitcase;traffic light;train;train_driver;truck;truck_driver".split(';')
-    data_dict = defaultdict(lambda: {'frame_nr': None, 'lat': None, 'lng': None, 'classnames': defaultdict(dict)})
+    merged_dict = total_objects_dict | total_modes_dict
+    # classnames_to_output = "airplane;backpack;bench;bicycle;bird;boat;boat_passenger;bus;bus_passenger;car;car_passenger;chair;clock;cyclist;dogwalker;handbag;motorcycle;motorcyclist;pedestrian;person;potted plant;refrigerator;skateboard;suitcase;traffic light;train;train_passenger;truck;truck_passenger".split(';')
+
     # add lat, lng to dataframe as separate columns
-    unique_location_names_df['lat'] = unique_location_names_df.apply(lambda x: x['geo'].centroid.coords[0][1], axis=1)
-    unique_location_names_df['lng'] = unique_location_names_df.apply(lambda x: x['geo'].centroid.coords[0][0], axis=1)
+    relevant_location_names_df['lat'] = relevant_location_names_df.apply(lambda x: x['geo'].centroid.coords[0][1] if x['geo'] is not None else None, axis=1)
+    relevant_location_names_df['lng'] = relevant_location_names_df.apply(lambda x: x['geo'].centroid.coords[0][0] if x['geo'] is not None else None, axis=1)
     # iterate over all input, add traces for each object, mode and add locations to x-axis
-    for row_index, row in unique_location_names_df.iterrows():
-        location_name = row['location_name']
+    for row_index, row in relevant_location_names_df.iterrows():
         location_frame_nr = int(row['frame_nr'])
-        location_lng = row['lng']
-        location_lat = row['lat']
-        # defining frame buffer boundaries, in which modes and objects are counted and attributed to the location
-        upper_frame_limit = location_frame_nr + int((frame_buffer / 2))
-        lower_frame_limit = location_frame_nr - int((frame_buffer / 2))
-        for dict_ in dicts_:
-            for classname, value in dict_.items():
-                # aggregate counts across frames based on the defined bins_per_video
-                counts_in_frame_buffer = 0
-                processed_frames = []
-                for index, (frame, value_) in enumerate(value['count_per_frame'].items()):
-                    frame = int(frame)
-                    if frame >= lower_frame_limit and frame <= upper_frame_limit and frame not in processed_frames:
-                        counts_in_frame_buffer += value_['count']
-                        processed_frames.append(frame)
-                data_dict[location_name]['classnames'][classname] = counts_in_frame_buffer
-        data_dict[location_name]['frame_nr'] = location_frame_nr
-        data_dict[location_name]['lat'] = location_lat
-        data_dict[location_name]['lng'] = location_lng
+        fps = row['fps']
+        origin = row['origin'] # origin of the location, either 'TEXT' or 'OCR'
+        FRAME_BUFFER = int(SEC_BUFFER * fps)
+        # location from detected street name
+        if origin == 'OCR':
+            # defining frame buffer boundaries, in which modes and objects are counted and attributed to the location
+            upper_frame_limit = location_frame_nr + FRAME_BUFFER
+            lower_frame_limit = location_frame_nr - FRAME_BUFFER
+        # location from video timestamp
+        elif origin == 'TEXT':
+            upper_frame_limit = 2 * FRAME_BUFFER + location_frame_nr
+            lower_frame_limit = location_frame_nr
+        else:
+            print(f'[!] origin value "{origin}" not valid. Exiting')
+            exit()
+        # to ensure consistency in which the classes are processed
+        for class_name, value in merged_dict.items():
+            # aggregate counts across frames based on the defined bins_per_video
+            counts_in_frame_buffer = 0
+            processed_frames = []
+            for index, (frame, value_) in enumerate(value['count_per_frame'].items()):
+                frame = int(frame)
+                if frame >= lower_frame_limit and frame <= upper_frame_limit and frame not in processed_frames:
+                    counts_in_frame_buffer += value_['count']
+                    processed_frames.append(frame)
+            # create new class name column and fill it with default value (to ensure dtype int64 instead of float64
+            # first check if column already exists, if not create
+            if class_name not in relevant_location_names_df.columns:
+                relevant_location_names_df[class_name] = 0
+            # add the class name count to the df under the new column and the current row index
+            relevant_location_names_df.loc[row_index, [class_name]] = counts_in_frame_buffer
 
     # write/append to CSV
     delimiter = ';'
-    ## find index of path separator
-    # slash_index = [i for i, ltr in enumerate(OUTPUT_VIDEO_FOLDER_PATH) if ltr == '\\'][-1]
-    filename = f'location_statistics_{frame_buffer}_buffer.csv'
-    # CSV_LOCATION_STATISTCS_OUTPUT_PATH = os.path.join(OUTPUT_VIDEO_FOLDER_PATH[:slash_index], filename)
-    CSV_LOCATION_STATISTCS_OUTPUT_PATH = os.path.join(VIDEOS_STORE_PATH, filename)
     # check if file was already create from previous video analysis
     if not os.path.isfile(CSV_LOCATION_STATISTCS_OUTPUT_PATH):
-        print(f'[!] locations statistics file NOT there')
-        # create header for CSV
-        base_string = f'{delimiter}'.join([classname for classname in classnames_to_output])
-        header = f'location_name{delimiter}lng{delimiter}lat{delimiter}frame_nr{delimiter}' + base_string
-        # newly create CSV and write header
-        with open(CSV_LOCATION_STATISTCS_OUTPUT_PATH, 'wt', encoding='utf-8') as f:
-            f.write(f'{header}\n')
+        print(f'[+] locations statistics file does NOT exist. Creating.')
 
-    print(f'[!] locations statistics file  EXISTS')
-    # append the location statistics from the current video to the output CSV
-    with open(CSV_LOCATION_STATISTCS_OUTPUT_PATH, 'at', encoding='utf-8') as f:
-        for location_name, value in data_dict.items():
-            csv_location_line = f'{location_name}{delimiter}{value["lng"]}{delimiter}{value["lat"]}{delimiter}{value["frame_nr"]}'
-            # to make sure it is the right order and missing key values are denoted with 0
-            for classname in classnames_to_output:
-                if classname in value['classnames']:
-                    count_value = value['classnames'][classname]
-                else:
-                    count_value = 0
-                csv_location_line += f'{delimiter}{count_value}'
-            # write line for location
-            f.write(f'{csv_location_line}\n')
-    return CSV_LOCATION_STATISTCS_OUTPUT_PATH
+        relevant_location_names_df.to_csv(CSV_LOCATION_STATISTCS_OUTPUT_PATH,
+                                                                          sep=delimiter,
+                                                                          index=False,
+                                                                          encoding='utf-8')
+    else:
+        print(f'[+] locations statistics file EXISTS, appending {len(relevant_location_names_df.index)} new locations.')
+        # append to existing csv in 'a' mode and neglect header and index
+        relevant_location_names_df.to_csv(CSV_LOCATION_STATISTCS_OUTPUT_PATH,
+                                                                          sep=delimiter,
+                                                                          mode='a',
+                                                                          header=False,
+                                                                          index=False,
+                                                                          encoding='utf-8')
 
 
 # function to create inset axes and plot bar chart on it
@@ -231,238 +220,774 @@ def build_bar(mapx, mapy, ax, width, xvals=['a','b','c'], yvals=[1,4,2], fcolors
     ax_h.axis('off')
     return ax_h
 
-def map_plotting(total_objects_dict, total_modes_dict, location_names_df, VIDEO_FOLDER_PATH, video_name, frame_buffer=2500):
-    # count transportation modes and objects in a given buffer around detected locations, for location specific statistics
+def map_plotting(CSV_LOCATION_STATISTCS_OUTPUT_PATH, VIDEODATA_OUTPUT_FOLDER_PATH, videodata_output_folder):
+    '''
+    map the locations and visualise their respective, detected transportation modes
+    uses the location_statistics.csv as input
+    :param total_objects_dict:
+    :param total_modes_dict:
+    :param relevant_location_names_df:
+    :param VIDEODATA_OUTPUT_FOLDER_PATH:
+    :param videodata_output_folder:
+    :param frame_buffer:
+    :return:
+    '''
     # classnames considered for the map for function map_plotting
-    classnames_for_map = ['pedestrians', 'cyclist', 'car_driver']
-    dicts_ = [total_objects_dict, total_modes_dict]
-    map_plotting_data = defaultdict(dict)
-    # create unique location names df
-    unique_location_names_df = location_names_df.drop_duplicates(subset=['location_name'])
-    # check validity of object geometry to avoid parsing errors later on
-    indexes_to_drop = []
-    for index, row in unique_location_names_df.iterrows():
-        try:
-            row['geo'].centroid.coords[0]
-        except:
-            indexes_to_drop.append(index)
-    unique_location_names_df.drop(indexes_to_drop, inplace=True)
-
+    classnames_to_map = ['pedestrian', 'bicycle', 'car']
+    # load df and convert to gdf
+    locations_df = pd.read_csv(CSV_LOCATION_STATISTCS_OUTPUT_PATH, sep=';')
+    # drop invalid geom rows before conversion to geodataframe
+    locations_df = locations_df.replace(to_replace='None', value=np.nan)
+    locations_df = locations_df[locations_df['geo'].notna()]
+    locations_df['geo'] = locations_df['geo'].apply(wkt.loads)
+    locations_gdf = gpd.GeoDataFrame(locations_df, crs='epsg:3857', geometry='geo')
+    # filter the df for the current video ID to only include its locations
+    locations_gdf = locations_gdf[locations_gdf['videoID'] == videodata_output_folder]
     # set spatial extend of axis based on detected features
-    feature_bounds = unique_location_names_df.geometry.total_bounds
+    feature_bounds = locations_gdf.geometry.total_bounds
     x_span = feature_bounds[2] - feature_bounds[0]
     y_span = feature_bounds[3] - feature_bounds[1]
     xlim = ([(feature_bounds[0] - (x_span * 0.5)), (feature_bounds[2] + (x_span * 0.5))])
     ylim = ([(feature_bounds[1] - (y_span * 0.5)), (feature_bounds[3] + (y_span * 0.5))])
-    # iterate over all input, add traces for each object, mode and add locations to x-axis
-    for row_index, row in unique_location_names_df.iterrows():
-        location_name = row['location_name']
-        location_frame_nr = int(row['frame_nr'])
-        # defining frame buffer boundaries, in which modes and objects are counted and attributed to the location
-        upper_frame_limit = location_frame_nr + int((frame_buffer / 2))
-        lower_frame_limit = location_frame_nr - int((frame_buffer / 2))
-        for dict_ in dicts_:
-            for classname, value in dict_.items():
-                if classname in classnames_for_map:
-                    # aggregate counts across frames based on the defined bins_per_video
-                    counts_in_frame_buffer = 0
-                    processed_frames = []
-                    for index, (frame, value_) in enumerate(value['count_per_frame'].items()):
-                        frame = int(frame)
-                        if frame >= lower_frame_limit and frame <= upper_frame_limit and frame not in processed_frames:
-                            counts_in_frame_buffer += value_['count']
-                            processed_frames.append(frame)
-                    map_plotting_data[location_name][classname] = counts_in_frame_buffer
 
     # initialise figure
     fig, ax = plt.subplots(figsize=(15, 14))
-    unique_location_names_df.plot(linewidth=4, color='red', ax=ax) #figsize=(20, 20),
+    locations_gdf.plot(linewidth=4, color='red', ax=ax) #figsize=(20, 20),
     # add x y as separate columns
     y_offset = y_span * 0.05
     x_offset = x_span * 0.05
-    unique_location_names_df['x'] = unique_location_names_df.centroid.map(lambda p: p.x) - x_offset
-    unique_location_names_df['y'] = unique_location_names_df.centroid.map(lambda p: p.y) + y_offset
+    locations_gdf['x'] = locations_gdf.centroid.map(lambda p: p.x) - x_offset
+    locations_gdf['y'] = locations_gdf.centroid.map(lambda p: p.y) + y_offset
 
     bar_width = 0.5
     colors = ['green', 'orange', 'blue']
 
-    for location_name, value in map_plotting_data.items():
-        x_cord = unique_location_names_df.loc[unique_location_names_df.location_name == location_name, 'x'].copy()
-        y_cord = unique_location_names_df.loc[unique_location_names_df.location_name == location_name, 'y'].copy()
-        y_vals = [map_plotting_data[location_name][classname] for classname in classnames_for_map]
-        # print(f'bar chart - location: {location_name}, y_vals: {y_vals}, classnames: {classnames_for_map}')
-        bax = build_bar(x_cord, y_cord, ax, bar_width, xvals=['a', 'b', 'c'],
-                        yvals=y_vals,
-                        fcolors=colors)
+    storage_ = defaultdict(dict)
+    for location_name in locations_gdf.location_name.unique():
+        for class_name in classnames_to_map:
+            storage_[location_name][class_name] = locations_gdf[class_name].mean()
+        # average all count of the same location
+
+        x_cords = locations_gdf.loc[locations_gdf.location_name == location_name, 'x'].copy()
+        x_cord = x_cords.iloc[0]
+        y_cords = locations_gdf.loc[locations_gdf.location_name == location_name, 'y'].copy()
+        y_cord = y_cords.iloc[0]
+        y_vals = [round(storage_[location_name][classname], 2) for classname in classnames_to_map]
+        try:
+            build_bar(x_cord, y_cord, ax, bar_width, xvals=['a', 'b', 'c'],
+                            yvals=y_vals,
+                            fcolors=colors)
+        except Exception as e:
+            print(f'[!] map plotting error: {e}')
+            print(f'[!] params:\nx_cord:{x_cord}\ny_cord:{y_cord}\nax:{ax}\nbar_width:{bar_width}\ny_vals:{y_vals}')
+
     # label each location with its name
-    unique_location_names_df.apply(lambda x: ax.annotate(text=x['location_name'],
-                                                         xy=x['geo'].centroid.coords[0],
-                                                         ha='center'),
-                                                         axis=1)
+    locations_gdf.apply(lambda x: ax.annotate(text=x['location_name'],
+                                                           xy=x['geo'].centroid.coords[0],
+                                                           ha='center'),
+                                     axis=1)
     # create legend (of the 3 classes)
     legend_patch = []
-    for index, classname in enumerate(classnames_for_map):
-        patch = mpatches.Patch(color=colors[index], label=classnames_for_map[index])
+    for index, classname in enumerate(classnames_to_map):
+        patch = mpatches.Patch(color=colors[index], label=classnames_to_map[index])
         legend_patch.append(patch)
     ax.legend(handles=legend_patch, loc=1)
-    # ylim = ([feature_bounds[1], feature_bounds[3]])
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
-    ax.set_axis_off()
+    try:
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.set_axis_off()
+    except:
+        print(f'[!] Skip setting axis limits.')
     # add basemap
     ctx.add_basemap(ax, url=ctx.providers.OpenStreetMap.Mapnik)
     # save figure
-    fig_filename = f"{time.strftime('%Y%m%d_%H%M%S')}_{video_name}_map.png"
-    fig_filepath = os.path.join(VIDEO_FOLDER_PATH, fig_filename)
+    fig_filename = f"{time.strftime('%Y%m%d_%H%M%S')}_{videodata_output_folder}_map.png"
+    fig_filepath = os.path.join(VIDEODATA_OUTPUT_FOLDER_PATH, fig_filename)
     plt.savefig(fig_filepath)
     # plt.show()
-    return unique_location_names_df
 
-def figure_plotting(total_objects_dict, total_modes_dict, location_names_df, video_folder_path, video_name, bins_per_video = 20):
-    # classnames considered for this plot
-    classnames_for_figure = ['person', 'bicycle', 'car', 'motorcycle', 'bus', 'train', 'truck', 'pedestrians',
-                              'dogwalker', 'cyclist', 'motorcyclist', 'car_driver', 'truck_driver', 'bus_driver', 'train_driver']
-    # store counts per classname and bin to later aggregate different forms of transport (active, motorised, public)
-    classnames_count_dict = defaultdict(lambda: {'counts_per_bin': []})
+def location_names_by_frequency_plot(FILTERED_CSV_STATISTICS_PATH, PLOTS_PATH, min_frequency=10):
+    '''
+    plot detected location names by decreasing observation frequency
+    :param FILTERED_CSV_STATISTICS_PATH:
+    :return:
+    '''
+    # load df and convert to gdf
+    locations_df = pd.read_csv(FILTERED_CSV_STATISTICS_PATH, sep=';')
+    # drop invalid geom rows before conversion to geo df
+    locations_df = locations_df.replace(to_replace='None', value=np.nan)
+    locations_df = locations_df[locations_df['geo'].notna()]
+    locations_df['geo'] = locations_df['geo'].apply(wkt.loads)
+    locations_gdf = gpd.GeoDataFrame(locations_df, crs='epsg:3857', geometry='geo')
+    # share of TEXT and OCR detected locations
+    origin_c = Counter(locations_gdf['origin'])
+    print(f'[+] Origin analysis - TEXT: {origin_c["TEXT"]}, OCR: {origin_c["OCR"]}')
+    # frequency of unique locations
+    locations_c = Counter(locations_gdf['location_name'])
+    print(f'[+] Overall unique locations: {len(locations_c.keys())}')
+    # filter for min. frequency and compile bar chart data
+    x_vals = []
+    y_vals = []
+    for k, v in locations_c.items():
+        if v >= min_frequency:
+            x_vals.append(k)
+            y_vals.append(v)
+    print(f'[+] unique locations with min. frequency {min_frequency}: {len(x_vals)}')
     # initialise figure
     fig = go.Figure()
-    dicts_ = [total_objects_dict, total_modes_dict]
-    # find highest frame with a present object - a plot x range will be defined from 0 to that max frame
-    max_frame = 0
-    for dict_ in dicts_:
-        for key, value in dict_.items():
-            frames = sorted(list(value['count_per_frame'].keys()), key=lambda x: int(x))
-            if frames:
-                if int(frames[-1]) > max_frame:
-                    max_frame = int(frames[-1])
-    # get all frames for the given object or transportation mode
-    frames_per_bin = round(max_frame / bins_per_video)
-    # delimiters between bins and add max frame at the end
-    real_bins = [frames_per_bin * bin_ for bin_ in range(1, bins_per_video)]
-    real_bins.append(max_frame)
-    # position where plotted on x-axis
-    x_bins = [(frames_per_bin / 2) + (frames_per_bin * bin_) for bin_ in range(bins_per_video)]
-    # iterate over all input, add traces for each object, mode and add locations to x-axis
-    for dict_ in dicts_:
-        for key_, value in dict_.items():
-            if key_ in classnames_for_figure:
-                # aggregate counts across frames based on the defined bins_per_video
-                counts_per_bin = []
-                processed_frames = []
-                for bin_index, (x_bin, real_bin) in enumerate(zip(x_bins, real_bins)):
-                    count_aggregate = 0
-                    for index, (frame, value_) in enumerate(value['count_per_frame'].items()):
-                        frame = int(frame)
-                        if frame not in processed_frames and frame < real_bin:
-                            count_aggregate += value_['count']
-                            processed_frames.append(frame)
-                    counts_per_bin.append(count_aggregate)
-                # add to result dict
-                classnames_count_dict[key_]['counts_per_bin'] = counts_per_bin
-                # add trace to figure
-                if max(counts_per_bin) > 0:
-                    fig.add_trace(go.Bar(x=x_bins, y=counts_per_bin, name=key_, width=frames_per_bin))
-                else:
-                    # print(f'[*] class {key_} not in plot, count: {count_aggregate}')
-                    pass
-    # aggregate forms of transport: active transport, motorised transport, public transport
-    # and add to bar graph
-    forms_of_transportation = {
-        "active": ["pedestrians", "cyclist", "dogwalker"],
-        "motorised": ["car_driver", "motorcyclist", "truck_driver"],
-        "public": ["bus_driver", "train_driver"]
-    }
-    for form_, value_ in forms_of_transportation.items():
-        # holds the final bin values for a given transportation form
-        form_counts_per_bin = []
-        # holds the bin values for the individual modes per form
-        mode_bin_counts = []
-        for transportation_mode in value_:
-            mode_bin_counts.append(classnames_count_dict[transportation_mode]['counts_per_bin'])
-        # calculate sum over all modes per form
-        for index in range(len(x_bins)):
-            added_bin_count = 0
-            for list_ in mode_bin_counts:
-                added_bin_count += list_[index]
-            form_counts_per_bin.append(added_bin_count)
-        # add bar element to figure
-        fig.add_trace(go.Bar(x=x_bins, y=form_counts_per_bin, name=f"{form_} transport", width=frames_per_bin))
-
-
-    # sort df by frame_nr and location name
-    location_names_df.sort_values(by=['frame_nr', 'location_name'], inplace=True)
-    # keep track of processed location names and their frame_nr, only include multiple same location if their frames are far apart
-    plotted_locations = {}
-    # if previously processed frames are to close to one another, they might overlap
-    previously_processed_frame = {'frame_nr': 0, 'switch': True}
-    allowed_frame_gap = 6000 # if more than 6000 frames are between the same location name they are plotted multiple times
-    unique_location_names_df = location_names_df.drop_duplicates(subset=['location_name'])
-    for index, row in unique_location_names_df.iterrows():
-        location_name = row['location_name']
-        frame_nr = int(row['frame_nr'])
-        # add transportation mode counts also to dict for map plotting,
-        # 1. find out in which bin the location_name is present
-        location_bin_index = [index_ for index_, real_bin in enumerate(real_bins) if frame_nr < real_bin][0]
-
-    # add location_names at the frames where they were detected
-    if location_names_df is not None:
-        for index, row in location_names_df.iterrows():
-            to_plot = False
-            location_name = row['location_name']
-            frame_nr = int(row['frame_nr'])
-            # process location names for figure annotation
-            if location_name in plotted_locations:
-                existing_frame_nr = plotted_locations[location_name]
-                if (existing_frame_nr + allowed_frame_gap) <= frame_nr:
-                    to_plot = True
-                    # update frame of existing dict entry
-                    plotted_locations[location_name] = frame_nr
-                else:
-                    continue
-            else:
-                to_plot = True
-                # add to dict
-                plotted_locations[location_name] = frame_nr
-            if to_plot:
-                # add offsets to avoid annotation overlap
-                y_axis_offset = -30
-                x_axis_offset = 20
-                # check potential overlap between annotations
-                if (previously_processed_frame['frame_nr'] + allowed_frame_gap) > frame_nr:
-                    if previously_processed_frame['switch']:
-                        y_axis_offset -= 30
-                        x_axis_offset += 40
-                        previously_processed_frame['switch'] = False
-                    else:
-                        previously_processed_frame['switch'] = True
-
-                previously_processed_frame['frame_nr'] = frame_nr
-                fig.add_annotation(
-                    x=frame_nr,
-                    y=0,
-                    xref="x",
-                    yref="y",
-                    text=location_name,
-                    showarrow=True,
-                    align="center",
-                    arrowhead=2,
-                    arrowsize=1,
-                    arrowwidth=2,
-                    arrowcolor="#636363",
-                    ax=x_axis_offset,
-                    ay=y_axis_offset,
-                    bordercolor="#c7c7c7",
-                    borderwidth=2,
-                    borderpad=4,
-                    bgcolor="#ff7f0e",
-                    opacity=1
-                )
+    fig.add_trace(go.Bar(x=x_vals,
+                         y=y_vals, width=0.8))
+    # adapt layout to a stacked bar chart
     fig.update_layout(
-        xaxis_title="frames",
-        yaxis_title="count",
-        barmode='stack'
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        colorway=px.colors.qualitative.G10,
+        font=dict(size=35),
+        xaxis_title="Top 8 unique locations",
+        yaxis_title="Number of detections",
+        barmode='stack',
+        xaxis={'categoryorder': 'total ascending'}
     )
-    # fig.show()
-    print('[+] saving figure as interactive HTML plot')
-    OUTPUT_HTML = os.path.join(video_folder_path, f'{video_name}_plot.html')
-    fig.write_html(OUTPUT_HTML)
+    fig.update_annotations(font_size=35)
+    fig.show()
+    print('[+] saving data exploration as interactive HTML plot')
+    PLOTS_FILEPATH = os.path.join(PLOTS_PATH, 'data_exploration.html')
+    # fig.write_html(PLOTS_FILEPATH)
+
+def frequency_of_frequencies_plot(FILTERED_CSV_STATISTICS_PATH, PLOTS_PATH):
+    '''
+    plot detected location names by decreasing observation frequency
+    :param FILTERED_CSV_STATISTICS_PATH:
+    :return:
+    '''
+    # load df and convert to gdf
+    locations_df = pd.read_csv(FILTERED_CSV_STATISTICS_PATH, sep=';')
+    # drop invalid geom rows before conversion to geo df
+    locations_df = locations_df.replace(to_replace='None', value=np.nan)
+    locations_df = locations_df[locations_df['geo'].notna()]
+    locations_df['geo'] = locations_df['geo'].apply(wkt.loads)
+    locations_gdf = gpd.GeoDataFrame(locations_df, crs='epsg:3857', geometry='geo')
+    # share of TEXT and OCR detected locations
+    origin_c = Counter(locations_gdf['origin'])
+    print(f'[+] Origin analysis - TEXT: {origin_c["TEXT"]}, OCR: {origin_c["OCR"]}')
+    # frequency of unique locations
+    locations_c = Counter(locations_gdf['location_name'])
+    print(f'[+] Overall unique locations: {len(locations_c.keys())}')
+    # filter for min. frequency and compile bar chart data
+    x_vals = []
+    y_vals = []
+    counter = defaultdict(lambda: 0)
+    for k, v in locations_c.items():
+        if v >= 10:
+            counter[10] += 1
+        else:
+            counter[v] += 1
+
+    for k, v in counter.items():
+        x_vals.append(k)
+        y_vals.append(v)
+
+    # initialise figure
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=x_vals,
+                         y=y_vals))
+
+    # adapt layout to a stacked bar chart
+    fig.update_layout(
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        colorway=px.colors.qualitative.G10,
+        font=dict(size=35),
+        # title="Frequency distribution of unique locations",
+        xaxis_title="Number of detections",
+        yaxis_title="Unique locations",
+        barmode='stack',
+        xaxis=dict(categoryorder='total descending',
+                   tickmode='array',
+                   tickvals=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                   ticktext=['1', '2', '3', '4', '5', '6', '7', '8', '9', '+10'])
+    )
+    fig.update_annotations(font_size=35)
+    fig.show()
+    print('[+] saving frequency distribution of locations as interactive HTML plot')
+    PLOTS_FILEPATH = os.path.join(PLOTS_PATH, 'frequency_plot', 'frequency_of_locations.html')
+    fig.write_html(PLOTS_FILEPATH)
+
+def temporal_analysis_per_location(FILTERED_CSV_STATISTICS_PATH, forms_of_transportation, PLOTS_PATH, min_frequency=7):
+    TEMP_PLOTS_PATH = os.path.join(PLOTS_PATH, f'temp_analysis_w_people_car_bikes_freq_{min_frequency}')
+    if not os.path.isdir(TEMP_PLOTS_PATH):
+        os.mkdir(TEMP_PLOTS_PATH)
+
+    storage_ = defaultdict(lambda: defaultdict(dict))
+    location_df = pd.read_csv(FILTERED_CSV_STATISTICS_PATH, delimiter=';')
+    colors = {
+        "active": "#AB63FA",
+        "motorised": "#FFA15A",
+        "public": "#19D3F3"
+    }
+    # add years to locations
+    # location_df['year'] = location_df.publishedAt.apply(lambda x: time.strptime(x, '%Y-%m-%dT%H:%M:%SZ').tm_year)
+    for location_name in location_df.location_name.unique():
+        # get all location records
+        location_records_df = location_df[location_df.location_name == location_name]
+        # check min frequency
+        if len(location_records_df.values) >= min_frequency:
+            # initialise figure
+            fig = go.Figure()
+            for transport_form in forms_of_transportation.keys():
+                # iterative over years
+                for year in location_records_df['year'].unique():
+                    nr_records_per_year = len(location_records_df[location_records_df.year == year].values)
+                    transport_form_counter = round(location_records_df.loc[((location_records_df.location_name == location_name) & (location_records_df.year == year)), transport_form].mean(), 2)
+                    storage_[location_name][f'{year}, {nr_records_per_year}'][transport_form] = transport_form_counter
+                # sort based on year (due to records in x tick label)
+                x_vals = []
+                y_vals = []
+                for item in sorted(list(storage_[location_name].keys()), key=lambda x: int(x.split(',')[0])):
+                    x_vals.append(item)
+                    y_vals.append(storage_[location_name][item][transport_form])
+                # add bar element to figure
+                fig.add_trace(go.Bar(x=x_vals,
+                                     y=y_vals,
+                                     name=f"{transport_form} transport",
+                                     marker_color=colors[transport_form]))
+            # adapt layout to a stacked bar chart
+            fig.update_layout(
+                xaxis_title="year, records",
+                yaxis_title="count",
+                barmode='stack',
+                title=f'Location: {location_name}'
+            )
+            fig.show()
+            TEMP_PLOTS_FILEPATH = os.path.join(TEMP_PLOTS_PATH, f'{location_name.replace(" ","_")}_temp_analysis.html')
+            fig.write_html(TEMP_PLOTS_FILEPATH)
+
+def small_multiples_by_quartier():
+    '''
+    within QGIS the location_statistic was joined with the quartiers (districts) of Paris for a level of
+    spatial aggregation. This allows transport analysis not only on the street level but also on a district level.
+
+    This function produces a figure of small multiples which includes the 5 most data dominant quartiers and visualises
+    the contribution of transport modes across the years
+
+    :return:
+    '''
+
+    FILTERED_CSV_STATISTICS_PATH_W_QUARTIERS = r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster\location_statistics_45s_buffer_ORIGINAL_w_quartiers.csv"
+
+    # load data
+    location_df = pd.read_csv(FILTERED_CSV_STATISTICS_PATH_W_QUARTIERS, delimiter=';')
+
+    # find top X quartiers with most data
+    nr_top_quartiers = 5
+    quartiers = location_df.groupby(['l_qu'])['l_qu'].count().sort_values(ascending=False)[:nr_top_quartiers].index
+
+    transport_modes = [
+        'active',
+        'motorised',
+        'public'
+    ]
+
+    colors = [
+        "#AB63FA",
+        "#FFA15A",
+        "#19D3F3"
+    ]
+
+    years = range(2017, 2022, 1)
+
+    fig = make_subplots(rows=5, cols=5,
+                        vertical_spacing=0.025, horizontal_spacing=0.005,
+                        shared_xaxes=True, shared_yaxes=True,
+                        subplot_titles=['temp' for i in range(1, 26)]) # column_widths=[0.7, 0.3]
+    # populate subplots
+    subplot_counter = 0
+    for row, quartier in enumerate(quartiers, 1):
+        for column, year in enumerate(years, 1):
+            transport_values_df = location_df.loc[(location_df.l_qu == quartier) & (location_df.year == year), transport_modes]
+            data_points = len(transport_values_df.index)
+            if not transport_values_df.empty:
+                # average the transport values per location and year across all measurements
+                mean_transport_values = transport_values_df.mean(axis=0)
+                # convert to relative
+                sum_values = mean_transport_values.sum()
+                rel_transport_values = [round(val/sum_values, 2) for val in mean_transport_values]
+            else:
+                rel_transport_values = [0, 0, 0]
+            fig.add_trace(go.Bar(x=transport_modes, y=rel_transport_values, marker=dict(color=colors)), row=row, col=column)
+            # update axes if conditions are met
+            if column == 1:
+                # make quartier name more legible (if contains saint-germain)
+                if '-' in quartier:
+                    quartier_label = 'St.-Ger. ' + quartier[14:]
+                else:
+                    quartier_label = quartier
+                fig.update_yaxes(title_text=quartier_label, row=row, col=column)
+            if row == 5:
+                fig.update_xaxes(title_text=year, row=row, col=column)
+
+            fig.update_yaxes(range=[0, 1], row=row, col=column)
+            # add amount of data points a subplot title
+            fig.layout.annotations[subplot_counter]['text'] = 'data points: ' + str(data_points)
+            subplot_counter += 1
+
+
+    fig.update_annotations(font_size=10)
+    fig.update_layout(showlegend=False)
+    fig.show()
+
+    fig.write_html(r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster\Paris_walk\plots\small_multiples\quartiers_years.html")
+
+def boxplots_COVID_by_quartier():
+    '''
+    build 2 sets of boxplots for the period before (2015-2019) and after COVID (2020-2021) including subplots for pedestrians, cyclists, motorised
+
+    :return:
+    '''
+
+    FILTERED_CSV_STATISTICS_PATH_W_QUARTIERS = r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster\location_statistics_45s_buffer_ORIGINAL_w_quartiers.csv"
+
+    # load data
+    location_df = pd.read_csv(FILTERED_CSV_STATISTICS_PATH_W_QUARTIERS, delimiter=';')
+    # add relative values for all target modes
+    location_df['pedestrian_rel'] = location_df.apply(lambda x: round(x['pedestrian'] / (x['active'] + x['motorised']), 3) if x['pedestrian'] != 0 else 0, axis=1)
+    location_df['cyclist_rel'] = location_df.apply(lambda x: round(x['cyclist'] / (x['active'] + x['motorised']), 3) if x['cyclist'] != 0 else 0, axis=1)
+    location_df['motorised_rel'] = location_df.apply(lambda x: round(x['motorised'] / (x['active'] + x['motorised']), 3) if x['motorised'] != 0 else 0, axis=1)
+
+
+    # find top X quartiers with most data
+    nr_top_quartiers = 5
+    quartiers = location_df.groupby(['l_qu'])['l_qu'].count().sort_values(ascending=False)[:nr_top_quartiers].index
+
+    transport_modes = [
+        'pedestrian_rel',
+        'cyclist_rel',
+        'motorised_rel'
+    ]
+
+    transport_modes_labels = [
+        'pedestrians',
+        'cyclists',
+        'motorised'
+    ]
+
+    colors = [
+        "#3182bd",
+        "#dd1c77",
+        "#FFA15A"
+    ]
+
+    years = range(2015, 2022, 1)
+    year_covid_boundary = 2020
+
+    fig = make_subplots(rows=5, cols=3,
+                        vertical_spacing=0.03, horizontal_spacing=0.005,
+                        shared_xaxes=True, shared_yaxes=True,
+                        subplot_titles=['Pedestrians', 'Cyclists', 'Motorised'],
+                        x_title='2015 - 2019 (Baseline) to 2020 - 2021 (Covid-19)')
+
+    # create df to store figure data for later statistical tests
+    df_dict = {'time': [], 'mode': [], 'value': [], 'quartier': []}
+    # define quartier order manually
+    quartier_names = ['Clignancourt', 'Halles', 'Saint-Germain-des-Prés', "Saint-Germain-l'Auxerrois", 'Sorbonne']
+    for row, quartier in enumerate(quartier_names, 1):
+
+    # populate subplots
+    # for row, quartier in enumerate(quartiers, 1):
+        pre_covid_df = location_df.loc[(location_df.l_qu == quartier) & (location_df.year < year_covid_boundary), transport_modes]
+        post_covid_df = location_df.loc[(location_df.l_qu == quartier) & (location_df.year >= year_covid_boundary), transport_modes]
+        for column, mode in enumerate(transport_modes, 1):
+            # update axes if conditions are met
+            if column == 1:
+                # make quartier name more legible (if contains saint-germain)
+                if quartier == 'Saint-Germain-des-Prés':
+                    quartier_label = 'SGdP'
+                elif quartier == "Saint-Germain-l'Auxerrois":
+                    quartier_label = 'SGlA'
+                else:
+                    quartier_label = quartier
+                fig.update_yaxes(title_text=quartier_label, row=row, col=column)
+            if row == 5:
+                fig.update_xaxes(row=row, col=column)
+            # average transport values across columns (pre/post covid)
+            # transport_mean_vals_column_average = [sum(l) / len(l) for l in zip(*time_box)]
+            # generate box plot for each mode in each subfigure
+            for index, df in enumerate([pre_covid_df, post_covid_df]):
+                vals_ = df[mode]
+                if index == 0:
+                    name = 'Base'
+                else:
+                    name = 'Covid'
+                fig.add_trace(go.Box(y=vals_, name=name, boxpoints='all', line=dict(color=colors[column-1])), row=row, col=column)
+                # populate test dataframe
+                for val_ in vals_:
+                    if column == 1:
+                        df_dict['time'].append('pre_covid')
+                    else:
+                        df_dict['time'].append('post_covid')
+                    df_dict['mode'].append(transport_modes_labels[index])
+                    df_dict['value'].append(val_)
+                    df_dict['quartier'].append(quartier)
+
+            fig.update_yaxes(range=[0, 1], row=row, col=column)
+
+    # build df for statistical test and export as csv to verification dir
+    df_test = pd.DataFrame(df_dict)
+    verification_dir = r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\verification\tests\COVID_quartier_data.csv"
+    df_test.to_csv(verification_dir, sep=';', encoding='utf-8')
+    print(f'[+] export figure data for further statistical significance tests...\n[*] Path: {verification_dir}')
+
+    fig.update_annotations(font_size=30)
+    fig.update_layout(showlegend=False,
+                      # plot_bgcolor="#ffffff",
+                      # paper_bgcolor="#ffffff",
+                      colorway=px.colors.qualitative.G10,
+                      font=dict(size=27)
+                    )
+    fig.show()
+    fig.write_html(r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster\Paris_walk\plots\small_multiples\quartiers_pre_post_covid.html")
+
+
+def weather_boxplots(FILTERED_CSV_STATISTICS_PATH, PLOTS_PATH):
+
+    df = pd.read_csv(FILTERED_CSV_STATISTICS_PATH, delimiter=';')
+    bad_weather_df = df.loc[df["badWeather"] == 1, ["badWeather", "active", "motorised", "public"]]
+    neutral_good_weather_df = df.loc[df["badWeather"] == 0, ["goodWeather", "active", "motorised", "public"]]
+
+
+    # Create the boxplot figure
+    fig = make_subplots(rows=1, cols=3,
+                        vertical_spacing=0.025, horizontal_spacing=0.005,
+                        shared_xaxes=True, shared_yaxes=True,
+                        subplot_titles=['active', 'motorised', 'public'],
+                        y_title='absolute counts')
+    # first subplot with active transport boxplot
+    fig.add_trace(go.Box(y=bad_weather_df["active"], name='bad weather', showlegend=False, line=dict(color="#AB63FA")), row=1, col=1)
+    fig.add_trace(go.Box(y=neutral_good_weather_df["active"], name='good weather', showlegend=False, line=dict(color="#5e06bc")), row=1, col=1)
+    # second subplot with motorised transport boxplot
+    fig.add_trace(go.Box(y=bad_weather_df["motorised"], name='bad weather', showlegend=False, line=dict(color="#FFA15A")), row=1, col=2)
+    fig.add_trace(go.Box(y=neutral_good_weather_df["motorised"], name='good weather', showlegend=False, line=dict(color="#c25400")), row=1, col=2)
+    # third subplot with public transport boxplot
+    fig.add_trace(go.Box(y=bad_weather_df["public"], name='bad weather', showlegend=False, line=dict(color="#19D3F3")), row=1, col=3)
+    fig.add_trace(go.Box(y=neutral_good_weather_df["public"], name='good weather', showlegend=False, line=dict(color="#0889a0")), row=1, col=3)
+    fig.update_layout(
+        font=dict(size=28)
+    )
+    fig.update_annotations(font_size=28)
+    fig.write_html(os.path.join(PLOTS_PATH, 'weather_boxplot.html'))
+    fig.show()
+
+def weather_boxplots_pedest_cyclist(FILTERED_CSV_STATISTICS_PATH, PLOTS_PATH):
+
+    df = pd.read_csv(FILTERED_CSV_STATISTICS_PATH, delimiter=';')
+
+    bad_weather_df = df.loc[df["badWeather"] == 1, ["badWeather", "pedestrian", "cyclist", "motorised"]]
+    neutral_good_weather_df = df.loc[df["badWeather"] == 0, ["goodWeather", "pedestrian", "cyclist", "motorised"]]
+
+
+    # Create the boxplot figure
+    fig = make_subplots(rows=1, cols=3,
+                        vertical_spacing=0.025, horizontal_spacing=0.01,
+                        shared_xaxes=True, shared_yaxes=True,
+                        subplot_titles=['Pedestrians', 'Cyclists', 'Motorised'],
+                        y_title='Count')
+    # first subplot with active transport boxplot
+    fig.add_trace(go.Box(y=bad_weather_df["pedestrian"], name='Bad Weather', showlegend=False, line=dict(color="#3182bd")), row=1, col=1)
+    fig.add_trace(go.Box(y=neutral_good_weather_df["pedestrian"], name='Good Weather', showlegend=False, line=dict(color="#276896")), row=1, col=1)
+    # second subplot with motorised transport boxplot
+    fig.add_trace(go.Box(y=bad_weather_df["cyclist"], name='Bad Weather', showlegend=False, line=dict(color="#dd1c77")), row=1, col=2)
+    fig.add_trace(go.Box(y=neutral_good_weather_df["cyclist"], name='Good Weather', showlegend=False, line=dict(color="#a81559")), row=1, col=2)
+    # third subplot with public transport boxplot
+    fig.add_trace(go.Box(y=bad_weather_df["motorised"], name='Bad Weather', showlegend=False, line=dict(color="#FFA15A")), row=1, col=3)
+    fig.add_trace(go.Box(y=neutral_good_weather_df["motorised"], name='Good Weather', showlegend=False, line=dict(color="#c25400")), row=1, col=3)
+    fig.update_layout(
+        font=dict(size=35),
+        margin_pad=0,
+        yaxis=dict(tickprefix="     ")
+    )
+    fig.update_annotations(font_size=40, borderpad=25)
+    fig.write_html(os.path.join(PLOTS_PATH, 'weather_w_pedestrian_cyclist_boxplot.html'))
+    fig.show()
+
+def quartiers_per_year(PLOTS_PATH):
+    FILTERED_CSV_STATISTICS_PATH_W_QUARTIERS = r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster\location_statistics_45s_buffer_ORIGINAL_w_quartiers.csv"
+
+    df = pd.read_csv(FILTERED_CSV_STATISTICS_PATH_W_QUARTIERS, delimiter=';')
+
+    unique_quartiers_per_year = df.groupby(by=['year'])
+
+    # data about the amount of videos (with timestamps) per year
+    data_per_year = {
+                    2015: 1,
+                    2016: 1,
+                    2017: 5,
+                    2018: 7,
+                    2019: 19,
+                    2020: 7,
+                    2021: 36
+    }
+
+    total_quartiers = 80
+
+    x_vals_w_data = []
+    y_vals_w_data = []
+    x_vals_without_data = []
+    y_vals_without_data = []
+
+    for name, group in unique_quartiers_per_year:
+        year = int(name)
+        unique_quartiers = len(group['l_qu'].unique())
+
+        x_vals_w_data.append(year)
+        x_vals_without_data.append(year)
+        y_vals_w_data.append(unique_quartiers)
+        y_vals_without_data.append(total_quartiers - unique_quartiers)
+
+    # initialise figure
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=x_vals_w_data,
+                         y=y_vals_w_data,
+                         width=0.5,
+                         offset=-0.3,
+                         name="Quartiers\nwith data   "))
+    fig.add_trace(go.Bar(x=x_vals_without_data,
+                         y=y_vals_without_data,
+                         width=0.5,
+                         offset=-0.3,
+                         name="Quartiers\nno data"))
+    # data per year
+    x_vals_datayear = [k for k in data_per_year.keys()]
+    y_vals_datayear = [v for v in data_per_year.values()]
+
+    fig.add_trace(go.Bar(x=x_vals_datayear,
+                         y=y_vals_datayear,
+                         base=0,
+                         width=0.2,
+                         offset=+0.225,
+                         name="Analysed videos"))
+
+    fig.update_layout(
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        colorway=px.colors.qualitative.G10,
+        font=dict(size=35),
+        xaxis_title="Year",
+        yaxis_title="Count",
+        barmode='stack',
+        legend=dict(
+            yanchor="top",
+            y=0.95,
+            xanchor="left",
+            x=0.10,
+            font=dict(size=32)
+        )
+    )
+
+    fig.show()
+    # fig.write_image(os.path.join(PLOTS_PATH, 'quartiers_per_year.eps'), width=1920, height=1080)
+    fig.write_html(os.path.join(PLOTS_PATH, 'quartiers_per_year.html'))
+
+def heatmap_matrix_plot_quartiles(classes=10):
+    '''
+    Visualise the share of a transport modes per quartier in quantiles relative to all quartiers (x-axis) and years (y-axis)
+
+    :return:
+    '''
+
+    INPUT_PATH = r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster\location_statistics_45s_buffer.csv"
+    OUTPUT_PATH = r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster\Paris_walk\plots\heatmap"
+
+    location_df = pd.read_csv(INPUT_PATH, delimiter=';', encoding='utf-8')
+    # iterate over target transport modes
+    modes = ['pedestrian', 'cyclist', 'motorised']
+    # get complete list of quarties to check if quartier is missing and to keep order
+    all_quartiers = location_df['l_qu'].unique()
+    for mode in modes:
+        # store year specific values per quartier, absolute count later used for sorting of quartiers
+        data_quartier_dict = defaultdict(lambda: dict(relative=[], absolute_count=0))
+        data_year_dict = defaultdict(lambda: dict(relative=[], absolute_count=0, quantile=[]))
+        data_total_dict = dict(absolute_counts=[])
+        # iterate over years and calc relative share of mode X on the total number of mode X across entire Paris i.e. all quartiers
+        years = range(2017, 2022, 1)
+        for year in years:
+            year_df = location_df.loc[location_df['year'] == year]
+            # count total amount per mode per year (for relative measurement)
+            total_count_mode_year = year_df[mode].sum()
+            # add total per year (as separate column for the heatmap)
+            data_total_dict['absolute_counts'].append(total_count_mode_year)
+            # iterate over quartiers
+            for quartier_name in all_quartiers:
+                # get subdf
+                quartier_df = year_df.loc[year_df['l_qu'] == quartier_name]
+                if quartier_df.empty:
+                    data_quartier_dict[quartier_name]['relative'].append(0.0)
+                    data_year_dict[year]['relative'].append(0.0)
+                else:
+                    data_quartier_dict[quartier_name]['absolute_count'] += quartier_df[mode].sum()
+                    data_quartier_dict[quartier_name]['relative'].append(quartier_df[mode].sum() / total_count_mode_year)
+                    data_year_dict[year]['relative'].append(quartier_df[mode].sum() / total_count_mode_year)
+
+        # sort data based on absolute values in decreasing order
+        data_quartier_dict = dict(sorted(data_quartier_dict.items(), key=lambda item: item[1]['absolute_count'], reverse=True))
+
+        district_values = [dict_['relative'] for dict_ in data_quartier_dict.values()]
+        yearly_values = [val_ for val_ in zip(*district_values)]
+        # convert yearly values into quartiles
+        quartile_values = []
+        for l_ in yearly_values:
+            bucket = []
+
+            # sort l to find index of given value to determine its quantile
+            l_sorted = sorted(l_)
+            for val in l_:
+                classes_d = {}
+                for i, n in enumerate(range(classes-1), 1):
+                    class_border = len(l_) * (i / (classes))
+                    classes_d[class_border] = i
+                classes_d[len(l_)] = classes
+                val_index_sorted = l_sorted.index(val)
+                for k, v in classes_d.items():
+                    if val_index_sorted <= k:
+                        bucket.append(v)
+                        break
+
+            quartile_values.append(bucket)
+
+        # display quartier mode counts over the years
+        fig = go.Figure(go.Heatmap(
+            z=quartile_values,
+            x=list(data_quartier_dict.keys()),
+            y=list(years),
+            colorscale='RdBu',
+            reversescale=True
+            ))
+
+        fig.update_layout(title=f"Mode: {mode[0].upper() + mode[1:]}",
+                          xaxis_title="Quartier",
+                          yaxis_title="Year",
+                          font=dict(size=28)
+                           )
+        fig.update_annotations(font_size=28)
+        fig.show()
+        fig.write_html(os.path.join(OUTPUT_PATH, f'heatmap_{mode.upper()}_{classes}_classes.html'))
+
+
+
+def heatmap_matrix_plot():
+    '''
+    Visualise the share of a transport modes per quartier in quantiles relative to all quartiers (x-axis) and years (y-axis)
+
+    :return:
+    '''
+
+    INPUT_PATH = r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster\location_statistics_45s_buffer.csv"
+    OUTPUT_PATH = r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster\Paris_walk\plots\heatmap"
+
+    location_df = pd.read_csv(INPUT_PATH, delimiter=';', encoding='utf-8')
+    # iterate over target transport modes
+    modes = ['pedestrian', 'cyclist', 'motorised']
+    # get complete list of quarties to check if quartier is missing and to keep order
+    all_quartiers = location_df['l_qu'].unique()
+    for mode in modes:
+        # store year specific values per quartier, absolute count later used for sorting of quartiers
+        data_quartier_dict = defaultdict(lambda: dict(relative=[], absolute_count=0))
+        data_year_dict = defaultdict(lambda: dict(relative=[], absolute_count=0, quantile=[]))
+        data_total_dict = dict(absolute_counts=[])
+        # iterate over years and calc relative share of mode X on the total number of mode X across entire Paris i.e. all quartiers
+        years = range(2017, 2022, 1)
+        for year in years:
+            year_df = location_df.loc[location_df['year'] == year]
+            # count total amount per mode per year (for relative measurement)
+            total_count_mode_year = year_df[mode].sum()
+            # add total per year (as separate column for the heatmap)
+            data_total_dict['absolute_counts'].append(total_count_mode_year)
+            # iterate over quartiers
+            for quartier_name in all_quartiers:
+                # get subdf
+                quartier_df = year_df.loc[year_df['l_qu'] == quartier_name]
+                if quartier_df.empty:
+                    data_quartier_dict[quartier_name]['relative'].append(0.0)
+                    data_year_dict[year]['relative'].append(0.0)
+                else:
+                    data_quartier_dict[quartier_name]['absolute_count'] += quartier_df[mode].sum()
+                    data_quartier_dict[quartier_name]['relative'].append(quartier_df[mode].sum() / total_count_mode_year)
+                    data_year_dict[year]['relative'].append(quartier_df[mode].sum() / total_count_mode_year)
+
+        # sort data based on absolute values in decreasing order
+        data_quartier_dict = dict(sorted(data_quartier_dict.items(), key=lambda item: item[1]['absolute_count'], reverse=True))
+
+        district_values = [dict_['relative'] for dict_ in data_quartier_dict.values()]
+        yearly_values = [val_ for val_ in zip(*district_values)]
+        # # convert yearly values into quartiles
+        # quartile_values = []
+        # for l_ in yearly_values:
+        #     bucket = []
+        #     low_q = (len(l_) + 1) * 0.25
+        #     mid_q = (len(l_) + 1) * 0.5
+        #     up_q = (len(l_) + 1) * 0.75
+        #     # sort l to find index of given value to determine its quantile
+        #     l_sorted = sorted(l_)
+        #     for val in l_:
+        #         val_index_sorted = l_sorted.index(val)
+        #         if val_index_sorted <= low_q:
+        #             qu_v = 1
+        #             bucket.append(qu_v)
+        #         elif val_index_sorted <= mid_q:
+        #             qu_v = 2
+        #             bucket.append(qu_v)
+        #         elif val_index_sorted <= up_q:
+        #             qu_v = 3
+        #             bucket.append(qu_v)
+        #         else:
+        #             qu_v = 4
+        #             bucket.append(qu_v)
+        #     quartile_values.append(bucket)
+
+
+        # display quartier mode counts over the years
+        fig = go.Figure(go.Heatmap(
+            z=yearly_values,
+            x=list(data_quartier_dict.keys()),
+            y=list(years),
+            colorscale='RdBu',
+            reversescale=True
+            ))
+
+        fig.update_layout(title=f"Mode: {mode[0].upper() + mode[1:]}",
+                          xaxis_title="Quartier",
+                          yaxis_title="Year",
+                          font=dict(size=28)
+                           )
+        fig.update_annotations(font_size=28)
+        fig.show()
+        fig.write_html(os.path.join(OUTPUT_PATH, f'heatmap_{mode.upper()}.html'))
+
+
+
+if __name__ == '__main__':
+    FILTERED_LOCATION_STATISTICS_PATH = r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster\location_statistics_45s_buffer_ORIGINAL_FINISH_FILTERED.csv"
+    VIDEODATA_OUTPUT_FOLDER_PATH = r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster"
+    videodata_output_folder = 'yqOlY5uBBbo'
+
+    forms_of_transportation = {
+        "active": ["pedestrian", "bicycle", "dogwalker"],
+        "motorised": ["car", "motorcycle", "truck"],
+        "public": ["bus", "train", "boat"]
+    }
+
+    OUTPUT_PATH = r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster"
+    PLOTS_PATH = r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster\Paris_walk\plots"
+    FILTERED_CSV_STATISTICS_PATH = r"C:\Users\mhartman\PycharmProjects\TransportDetectionV3\from_cluster\location_statistics_45s_buffer_ORIGINAL_FINISH_FILTERED.csv"
+    # all_locations_map(FILTERED_LOCATION_STATISTICS_PATH)
+    # all_locations_plot(FILTERED_CSV_STATISTICS_PATH, OUTPUT_PATH, forms_of_transportation)
+    # data_exploration(FILTERED_CSV_STATISTICS_PATH, PLOTS_PATH, min_frequency=2)
+    # temporal_analysis_per_location(FILTERED_CSV_STATISTICS_PATH, forms_of_transportation, PLOTS_PATH, min_frequency=9)
+    # small_multiples_by_quartier()
+    # frequency_of_frequencies_plot(FILTERED_CSV_STATISTICS_PATH, PLOTS_PATH)
+    # weather_boxplots(FILTERED_CSV_STATISTICS_PATH, PLOTS_PATH)
+    quartiers_per_year(PLOTS_PATH)
+    # boxplots_COVID_by_quartier()
+    # weather_boxplots_pedest_cyclist(FILTERED_CSV_STATISTICS_PATH, PLOTS_PATH)
+    # location_names_by_frequency_plot(FILTERED_CSV_STATISTICS_PATH, PLOTS_PATH)
+    # heatmap_matrix_plot()
+    # heatmap_matrix_plot_quartiles(classes=20)

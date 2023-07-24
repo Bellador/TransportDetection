@@ -1,0 +1,21 @@
+processing of:
+
+(OCR_PER_SEC=1) (RES=720p) 9min19sec video (559s) took 1029s to process => TAKES ROUGHLY 1.8 TIMES the original video length! => TIME FOR ENTIRE VIDEO CORPUS (17h or 61'200s) = 30.6h
+(OCR_PER_SEC=2) (RES=720p) 9min19sec video (559s) took 1134s to process => TAKES ROUGHLY 2 TIMES the original video length! => TIME FOR ENTIRE VIDEO CORPUS (17h or 61'200s) = 34h
+(OCR_PER_SEC=3) (RES=720p) 9min19sec video (559s) took 1206s to process => TAKES ROUGHLY 2.2 TIMES the original video length! => TIME FOR ENTIRE VIDEO CORPUS (17h or 61'200s) = 37.4h
+
+
+
+WITHOUT POPEN (DIRECTLY REFER DETECT FUNCTION)
+
+
+(OCR_PER_SEC=3) (RES=720p) 9min19sec video (559s) took 1315s to process => TAKES ROUGHLY 2.35 TIMES the original video length! => TIME FOR ENTIRE VIDEO CORPUS (17h or 61'200s) = 40h
+(OCR_PER_SEC=3) (RES=720p) 7min58sec video (479s) took 1053s to process => TAKES ROUGHLY 2.2 TIMES the original video length! => TIME FOR ENTIRE VIDEO CORPUS (17h or 61'200s) = 34h
+
+
+WITH POPEN
+
+
+(OCR_PER_SEC=3) (RES=720p) 9min19sec video (559s) took to 1789s process => TAKES ROUGHLY 3.2 TIMES the original video length! => TIME FOR ENTIRE VIDEO CORPUS (17h or 61'200s) = 54.5h
+(OCR_PER_SEC=3) (RES=720p) 7min58sec video (479s) took to 1034s process => TAKES ROUGHLY 2.2 TIMES the original video length! => TIME FOR ENTIRE VIDEO CORPUS (17h or 61'200s) = 34h
+
