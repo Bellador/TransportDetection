@@ -14,9 +14,9 @@ The first part deals with the transport relevant objects. Therein the objects (e
 
 :bicyclist: = :walking: + :bike:
 
-The second part deals with context information around the detected modes of transport. Attributing a location to certain video segments - so called geolocation - allows spatial linkage. This was achieved twofold. Firstly, the video frames were scanned for street names through Optical Character Recognition (OCR) ([EasyOCR](https://pypi.org/project/easyocr/)) and secondly, manually added video timestamps by the author were scanned for mentions of specific locations. The textual video-metadata (title and description) are besides the timestamps also scanned for mentions about weather conditions (e.g. sunny/rainy) and concrete time references of the recording.
+The second part deals with context information around the detected modes of transport. Attributing a location to certain video segments - so called geolocation - allows spatial linkage. This was achieved twofold. Firstly, the video frames are scanned for street names through Optical Character Recognition (OCR) ([EasyOCR](https://pypi.org/project/easyocr/)) and secondly, manually added video timestamps by the video author were scanned for mentions of specific locations. The textual video-metadata (title and description) are besides the timestamps also scanned for mentions about weather conditions (e.g. sunny/rainy) and concrete time references of the recording.
 
-For the pipeline to run autonomosly, it encompasses a Youtube Video Downloader ([PyTube](https://github.com/pytube/pytube) with a custom wrapper) and Youtube API module (YoutubeAPI-Query) to obtain all necessary data to run. 
+For the pipeline to run autonomosly, it encompasses a Youtube Video Downloader ([PyTube](https://github.com/pytube/pytube) with a custom built wrapper) and the Youtube API module (YoutubeAPI-Query) to obtain all necessary data to run. 
 
 
 ## Output
@@ -59,9 +59,29 @@ To run the `workflow.py` complete the following steps:
 
 ## External resources
 
-The workflow is based on external libraries for (1) object detection and (2) object tracking as well as for (3) Optical Character Recognition (OCR) and (4) video downloading. TThese resources were taken from:
+The workflow is based on external libraries for (1) object detection and (2) object tracking as well as for (3) Optical Character Recognition (OCR), (4) video downloading and (5) + (6) gazetteer and mapping data. These resources were taken from:
 
 - (1) [YOLOv5](https://github.com/mikel-brostrom/Yolov5_DeepSort_Pytorch/)
 - (2) [DeepSort](https://github.com/nwojke/deep_sort)
 - (3) [EasyOCR](https://pypi.org/project/easyocr/)
 - (4) [PyTube](https://github.com/pytube/pytube)
+- (5) [OpenStreetMap](https://www.openstreetmap.org)
+- (6) [MapBox](https://www.mapbox.com/)
+
+
+## Citation
+
+```
+@article{10.1080/17538947.2023.2230182,
+author = {Maximilian C. Hartmann and Ross S. Purves},
+title = {Seeing through a new lens: exploring the potential of city walking tour videos for urban analytics},
+journal = {International Journal of Digital Earth},
+volume = {16},
+number = {1},
+pages = {2555-2573},
+year  = {2023},
+publisher = {Taylor & Francis},
+doi = {10.1080/17538947.2023.2230182},
+URL = {https://doi.org/10.1080/17538947.2023.2230182}
+}
+```
